@@ -1,0 +1,16 @@
+#!/bin/bash
+# Called by Patroni: <script> <action> <role> <scope>
+# Writes the primary IP into etcd so CoreDNS serves postgres.proxmox.local
+ACTION=$1
+ROLE=$2
+MY_IP="{{ ansible_host }}"
+ETCD_ENDPOINTS="{% for ip in etcd_nodes.values() %}http://{{ ip }}:2379{% if not loop.last %},{% endif %}{% endfor %}"
+ETCD_KEY="/coredns/local/proxmox/postgres"
+TTL=5
+
+if [ "$ROLE" = "master" ]; then
+    /usr/local/bin/etcdctl \
+        --endpoints="${ETCD_ENDPOINTS}" \
+        put "${ETCD_KEY}" "{\"host\":\"${MY_IP}\",\"ttl\":${TTL}}"
+    logger -t patroni-dns "primary promoted: postgres.proxmox.local → ${MY_IP}"
+fi

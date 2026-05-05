@@ -17,6 +17,8 @@ bootstrap:
     loop_wait: 10
     retry_timeout: 30
     maximum_lag_on_failover: 1048576
+    synchronous_mode: true
+    synchronous_node_count: 1
     postgresql:
       use_pg_rewind: true
       use_slots: true
@@ -63,8 +65,11 @@ postgresql:
     unix_socket_directories: /var/run/postgresql
     max_connections: 200
 
+callbacks:
+  on_role_change: /etc/patroni/update-dns.sh
+
 tags:
-  nofailover: false
+  nofailover: {{ patroni_nofailover | default(false) | lower }}
   noloadbalance: false
   clonefrom: false
-  nosync: false
+  nosync: {{ patroni_nosync | default(false) | lower }}

@@ -3,16 +3,15 @@ ansible_user: ubuntu
 postgresql_version: 17
 
 patroni_scope: postgres-ha
-patroni_vip: 10.10.0.21
-patroni_vip_netmask: 24
-patroni_vip_interface: eth0
+patroni_nofailover: false
+patroni_nosync: false
 
 etcd_version: "3.5.17"
 etcd_cluster_name: patroni
 etcd_nodes:
-  db-1:      "10.10.0.20"
-  db-2:      "10.10.0.22"
-  db-arbiter: "10.10.0.23"
+  db-1: "10.10.0.20"
+  db-2: "10.10.0.22"
+  db-3: "10.10.0.24"
 
 postgresql_databases:
   - name: keycloak
@@ -27,9 +26,12 @@ postgresql_users:
   - name: harbor
     password: "{{ lookup('env', 'VAULT_HARBOR_DB_PASSWORD') | mandatory }}"
     db: harbor
+  - name: pgbouncer
+    password: "{{ lookup('env', 'VAULT_PGBOUNCER_PASSWORD') | mandatory }}"
+    db: postgres
 
 vault_postgres_superuser_password: "{{ lookup('env', 'VAULT_POSTGRES_SUPERUSER_PASSWORD') | mandatory }}"
-vault_replication_password:         "{{ lookup('env', 'VAULT_REPLICATION_PASSWORD') | mandatory }}"
-vault_rewind_password:              "{{ lookup('env', 'VAULT_REWIND_PASSWORD') | mandatory }}"
-vault_keycloak_db_password:         "{{ lookup('env', 'VAULT_KEYCLOAK_DB_PASSWORD') | mandatory }}"
-vault_harbor_db_password:           "{{ lookup('env', 'VAULT_HARBOR_DB_PASSWORD') | mandatory }}"
+vault_replication_password:        "{{ lookup('env', 'VAULT_REPLICATION_PASSWORD') | mandatory }}"
+vault_rewind_password:             "{{ lookup('env', 'VAULT_REWIND_PASSWORD') | mandatory }}"
+vault_keycloak_db_password:        "{{ lookup('env', 'VAULT_KEYCLOAK_DB_PASSWORD') | mandatory }}"
+vault_harbor_db_password:          "{{ lookup('env', 'VAULT_HARBOR_DB_PASSWORD') | mandatory }}"

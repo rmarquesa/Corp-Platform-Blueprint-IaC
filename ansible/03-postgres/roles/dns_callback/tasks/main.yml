@@ -1,0 +1,24 @@
+---
+- name: Write DNS update callback script
+  template:
+    src: update-dns.sh.j2
+    dest: /etc/patroni/update-dns.sh
+    owner: postgres
+    group: postgres
+    mode: "0750"
+  notify: restart patroni
+
+- name: Find current Patroni leader
+  uri:
+    url: "http://{{ ansible_host }}:8008/patroni"
+    return_content: true
+  register: patroni_info
+  ignore_errors: true
+
+- name: Sync DNS record to current leader
+  command: >
+    /usr/local/bin/etcdctl
+    --endpoints={% for ip in etcd_nodes.values() %}http://{{ ip }}:2379{% if not loop.last %},{% endif %}{% endfor %}
+    put /coredns/local/proxmox/postgres '{"host":"{{ ansible_host }}","ttl":5}'
+  when: (patroni_info.json.role | default('')) == 'master'
+  changed_when: false

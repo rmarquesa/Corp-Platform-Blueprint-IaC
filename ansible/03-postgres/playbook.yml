@@ -17,9 +17,10 @@
   roles:
     - postgresql
     - patroni
+    - dns_callback
 
-- name: Deploy vip-manager (floating VIP)
+- name: Bootstrap pgBouncer auth schema in PostgreSQL
   hosts: patroni
   become: true
   roles:
-    - vip_manager
+    - pgbouncer_auth

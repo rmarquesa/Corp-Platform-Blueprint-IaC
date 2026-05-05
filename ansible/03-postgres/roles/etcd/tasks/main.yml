@@ -57,6 +57,85 @@
     state: directory
     mode: "0755"
 
+# ── Cluster membership management ────────────────────────────────────────────
+
+- name: Check if etcd cluster is already running
+  command: >
+    etcdctl endpoint health
+    --endpoints=http://{{ etcd_nodes.values() | first }}:2379
+  register: etcd_existing
+  ignore_errors: true
+  run_once: true
+  changed_when: false
+
+- name: Get current etcd member list
+  command: >
+    etcdctl member list --write-out=json
+    --endpoints=http://{{ etcd_nodes.values() | first }}:2379
+  register: etcd_members_raw
+  when: etcd_existing.rc == 0
+  run_once: true
+  changed_when: false
+  ignore_errors: true
+
+- name: Remove obsolete members and add missing members
+  shell: |
+    set -e
+    ENDPOINTS="http://{{ etcd_nodes.values() | first }}:2379"
+    KNOWN="{{ etcd_nodes.keys() | join(' ') }}"
+
+    python3 << 'EOF'
+    import json, subprocess, os
+
+    endpoints = os.environ.get('EP', 'http://{{ etcd_nodes.values() | first }}:2379')
+    known = set("{{ etcd_nodes.keys() | join(' ') }}".split())
+    nodes = { {% for k, v in etcd_nodes.items() %}"{{ k }}": "{{ v }}", {% endfor %} }
+
+    raw = subprocess.run(
+        ["etcdctl", "member", "list", "--write-out=json",
+         "--endpoints", endpoints],
+        capture_output=True, text=True)
+    data = json.loads(raw.stdout)
+    members = data.get("members", [])
+    current_names = {m.get("name", "") for m in members}
+
+    # Remove members no longer in etcd_nodes
+    for m in members:
+        name = m.get("name", "")
+        mid = format(m["ID"], "x")
+        if name and name not in known:
+            print(f"Removing obsolete member: {name} ({mid})")
+            subprocess.run(["etcdctl", "member", "remove", mid,
+                            "--endpoints", endpoints], check=True)
+
+    # Add members in etcd_nodes not yet in cluster
+    for name, ip in nodes.items():
+        if name not in current_names:
+            print(f"Adding new member: {name} (http://{ip}:2380)")
+            subprocess.run(["etcdctl", "member", "add", name,
+                            f"--peer-urls=http://{ip}:2380",
+                            "--endpoints", endpoints], check=True)
+    EOF
+  when: etcd_existing.rc == 0
+  run_once: true
+  changed_when: true
+  ignore_errors: true
+
+- name: Determine cluster state per node
+  set_fact:
+    etcd_cluster_state: >-
+      {{ 'existing' if (etcd_existing.rc | default(1)) == 0 and
+         inventory_hostname not in (etcd_members_raw.stdout | default('') | from_json).get('members', []) | map(attribute='name') | list
+         else 'new' }}
+  when: etcd_existing is defined
+
+- name: Default cluster state for fresh installs
+  set_fact:
+    etcd_cluster_state: "new"
+  when: etcd_existing is not defined or etcd_existing.rc != 0
+
+# ── Write config and start ────────────────────────────────────────────────────
+
 - name: Write etcd environment file
   template:
     src: etcd.env.j2
@@ -98,7 +177,7 @@
 - name: Wait for etcd cluster to be healthy
   command: >
     etcdctl endpoint health
-    --endpoints=http://{{ etcd_nodes['db-1'] }}:2379,http://{{ etcd_nodes['db-2'] }}:2379,http://{{ etcd_nodes['db-arbiter'] }}:2379
+    --endpoints={% for ip in etcd_nodes.values() %}http://{{ ip }}:2379{% if not loop.last %},{% endif %}{% endfor %}
   retries: 10
   delay: 5
   register: etcd_health

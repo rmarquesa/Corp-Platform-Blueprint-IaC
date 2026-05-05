@@ -1,0 +1,22 @@
+---
+- name: Create pgbouncer schema and auth function
+  become: true
+  become_user: postgres
+  postgresql_query:
+    db: postgres
+    query: |
+      CREATE SCHEMA IF NOT EXISTS pgbouncer;
+
+      CREATE OR REPLACE FUNCTION pgbouncer.get_auth(p_usename TEXT)
+        RETURNS TABLE(username TEXT, password TEXT)
+        LANGUAGE SQL SECURITY DEFINER AS
+      $$
+        SELECT usename::TEXT, passwd::TEXT
+        FROM pg_catalog.pg_shadow
+        WHERE usename = p_usename;
+      $$;
+
+      REVOKE ALL ON FUNCTION pgbouncer.get_auth(TEXT) FROM PUBLIC;
+      GRANT EXECUTE ON FUNCTION pgbouncer.get_auth(TEXT) TO pgbouncer;
+  run_once: true
+  delegate_to: "{{ groups['postgres'] | first }}"
