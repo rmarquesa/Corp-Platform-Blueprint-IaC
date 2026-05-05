@@ -1,0 +1,25 @@
+---
+- name: Common prerequisites on all nodes
+  hosts: etcd
+  become: true
+  roles:
+    - prereqs
+
+- name: Deploy etcd cluster
+  hosts: etcd
+  become: true
+  roles:
+    - etcd
+
+- name: Deploy PostgreSQL + Patroni
+  hosts: patroni
+  become: true
+  roles:
+    - postgresql
+    - patroni
+
+- name: Deploy vip-manager (floating VIP)
+  hosts: patroni
+  become: true
+  roles:
+    - vip_manager

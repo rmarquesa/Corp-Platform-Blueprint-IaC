@@ -1,0 +1,113 @@
+---
+- name: Install python3-venv
+  apt:
+    name: python3-venv
+    state: present
+
+- name: Create Patroni virtualenv and install packages
+  pip:
+    name:
+      - patroni[etcd3]
+      - psycopg2-binary
+    virtualenv: /opt/patroni/venv
+    virtualenv_command: python3 -m venv
+    state: present
+
+- name: Create patroni config directory
+  file:
+    path: /etc/patroni
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0750"
+
+- name: Create patroni data directory
+  file:
+    path: /var/lib/postgresql/{{ postgresql_version }}/patroni
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0700"
+
+- name: Write Patroni configuration
+  template:
+    src: patroni.yml.j2
+    dest: /etc/patroni/patroni.yml
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  notify: restart patroni
+
+- name: Write Patroni systemd unit
+  copy:
+    dest: /etc/systemd/system/patroni.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Patroni PostgreSQL HA
+      After=syslog.target network.target etcd.service
+
+      [Service]
+      Type=simple
+      User=postgres
+      Group=postgres
+      ExecStart=/opt/patroni/venv/bin/patroni /etc/patroni/patroni.yml
+      ExecReload=/bin/kill -s HUP $MAINPID
+      KillMode=process
+      TimeoutSec=30
+      Restart=on-failure
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: restart patroni
+
+- name: Enable and start Patroni on primary first
+  systemd:
+    name: patroni
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: inventory_hostname == 'db-1'
+
+- name: Wait for primary to be ready
+  command: /opt/patroni/venv/bin/patronictl -c /etc/patroni/patroni.yml list
+  become_user: postgres
+  retries: 12
+  delay: 5
+  register: patroni_status
+  until: "'Leader' in patroni_status.stdout"
+  when: inventory_hostname == 'db-1'
+  changed_when: false
+
+- name: Enable and start Patroni on replica
+  systemd:
+    name: patroni
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: inventory_hostname != 'db-1'
+
+- name: Create application databases and users
+  become_user: postgres
+  block:
+    - name: Create users
+      community.postgresql.postgresql_user:
+        name: "{{ item.name }}"
+        password: "{{ item.password }}"
+        state: present
+        login_host: "127.0.0.1"
+        login_user: postgres
+        login_password: "{{ vault_postgres_superuser_password }}"
+      loop: "{{ postgresql_users }}"
+      no_log: true
+
+    - name: Create databases
+      community.postgresql.postgresql_db:
+        name: "{{ item.name }}"
+        owner: "{{ item.owner }}"
+        state: present
+        login_host: "127.0.0.1"
+        login_user: postgres
+        login_password: "{{ vault_postgres_superuser_password }}"
+      loop: "{{ postgresql_databases }}"
+  when: inventory_hostname == 'db-1'

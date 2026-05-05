@@ -1,0 +1,41 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install required packages
+  apt:
+    name:
+      - curl
+      - ca-certificates
+      - gnupg
+      - redis-server
+      - python3-psycopg2
+    state: present
+
+- name: Configure Redis bind address
+  lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: "^bind "
+    line: "bind 127.0.0.1 {{ ansible_host }}"
+  notify: restart redis
+
+- name: Configure Redis with password
+  lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: "^#?requirepass"
+    line: "requirepass {{ vault_harbor_redis_password }}"
+  notify: restart redis
+
+- name: Enable and start Redis
+  systemd:
+    name: redis-server
+    enabled: true
+    state: started
+
+- name: Create harbor data directory
+  file:
+    path: "{{ harbor_data_dir }}"
+    state: directory
+    mode: "0755"

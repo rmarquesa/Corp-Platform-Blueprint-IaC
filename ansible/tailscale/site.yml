@@ -1,0 +1,7 @@
+---
+- name: Configure Tailscale subnet router
+  hosts: tailscale
+  become: true
+  gather_facts: true
+  roles:
+    - tailscale

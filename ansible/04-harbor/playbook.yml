@@ -1,0 +1,8 @@
+---
+- name: Install Harbor registry
+  hosts: all
+  become: true
+  roles:
+    - prereqs
+    - docker
+    - harbor

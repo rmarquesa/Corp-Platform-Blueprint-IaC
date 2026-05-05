@@ -1,0 +1,34 @@
+---
+- name: Wait for infra worker nodes to be Ready
+  shell: k3s kubectl get node {{ item }} -o jsonpath='{.status.conditions[-1].type}'
+  register: node_status
+  until: node_status.stdout == "Ready"
+  retries: 30
+  delay: 10
+  loop: "{{ groups['k3s_workers_infra'] }}"
+
+- name: Wait for app worker nodes to be Ready
+  shell: k3s kubectl get node {{ item }} -o jsonpath='{.status.conditions[-1].type}'
+  register: node_status
+  until: node_status.stdout == "Ready"
+  retries: 30
+  delay: 10
+  loop: "{{ groups['k3s_workers_app'] }}"
+
+- name: Label infra worker nodes
+  shell: k3s kubectl label node {{ item }} workload=infra --overwrite
+  loop: "{{ groups['k3s_workers_infra'] }}"
+
+- name: Taint infra worker nodes (NoSchedule for non-infra workloads)
+  shell: k3s kubectl taint node {{ item }} workload=infra:NoSchedule --overwrite
+  loop: "{{ groups['k3s_workers_infra'] }}"
+
+- name: Label app worker nodes
+  shell: k3s kubectl label node {{ item }} workload=app --overwrite
+  loop: "{{ groups['k3s_workers_app'] }}"
+
+- name: Mark masters as control-plane only
+  shell: |
+    k3s kubectl taint node {{ item }} node-role.kubernetes.io/control-plane=:NoSchedule --overwrite
+    k3s kubectl label node {{ item }} node-role.kubernetes.io/control-plane="" --overwrite
+  loop: "{{ groups['k3s_first_server'] + groups['k3s_servers'] }}"

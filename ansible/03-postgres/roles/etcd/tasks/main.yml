@@ -1,0 +1,107 @@
+---
+- name: Create etcd group
+  group:
+    name: etcd
+    system: true
+
+- name: Create etcd user
+  user:
+    name: etcd
+    group: etcd
+    system: true
+    shell: /sbin/nologin
+    home: /var/lib/etcd
+    create_home: true
+
+- name: Check if etcd binary exists
+  stat:
+    path: /usr/local/bin/etcd
+  register: etcd_binary
+
+- name: Download etcd binary
+  when: not etcd_binary.stat.exists
+  block:
+    - name: Download etcd archive
+      get_url:
+        url: "https://github.com/etcd-io/etcd/releases/download/v{{ etcd_version }}/etcd-v{{ etcd_version }}-linux-amd64.tar.gz"
+        dest: /tmp/etcd.tar.gz
+        mode: "0644"
+
+    - name: Extract etcd
+      unarchive:
+        src: /tmp/etcd.tar.gz
+        dest: /tmp
+        remote_src: true
+
+    - name: Install etcd binaries
+      copy:
+        src: "/tmp/etcd-v{{ etcd_version }}-linux-amd64/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        mode: "0755"
+        remote_src: true
+      loop:
+        - etcd
+        - etcdctl
+
+- name: Create etcd data directory
+  file:
+    path: /var/lib/etcd
+    state: directory
+    owner: etcd
+    group: etcd
+    mode: "0700"
+
+- name: Create etcd config directory
+  file:
+    path: /etc/etcd
+    state: directory
+    mode: "0755"
+
+- name: Write etcd environment file
+  template:
+    src: etcd.env.j2
+    dest: /etc/etcd/etcd.env
+    owner: etcd
+    group: etcd
+    mode: "0640"
+  notify: restart etcd
+
+- name: Write etcd systemd unit
+  copy:
+    dest: /etc/systemd/system/etcd.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=etcd key-value store
+      After=network.target
+
+      [Service]
+      User=etcd
+      Type=notify
+      EnvironmentFile=/etc/etcd/etcd.env
+      ExecStart=/usr/local/bin/etcd
+      Restart=always
+      RestartSec=5s
+      LimitNOFILE=65536
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: restart etcd
+
+- name: Enable and start etcd
+  systemd:
+    name: etcd
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Wait for etcd cluster to be healthy
+  command: >
+    etcdctl endpoint health
+    --endpoints=http://{{ etcd_nodes['db-1'] }}:2379,http://{{ etcd_nodes['db-2'] }}:2379,http://{{ etcd_nodes['db-arbiter'] }}:2379
+  retries: 10
+  delay: 5
+  register: etcd_health
+  until: etcd_health.rc == 0
+  run_once: true
+  changed_when: false

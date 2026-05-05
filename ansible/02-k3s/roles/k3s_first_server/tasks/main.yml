@@ -1,0 +1,68 @@
+---
+- name: Install k3s first server with cluster-init
+  shell: |
+    curl -sfL https://get.k3s.io | \
+    INSTALL_K3S_VERSION="{{ k3s_version }}" \
+    K3S_TOKEN="{{ k3s_token }}" \
+    sh -s - server \
+    --cluster-init \
+    {{ k3s_server_extra_args }}
+  args:
+    creates: /usr/local/bin/k3s
+
+- name: Wait for k3s API to be ready
+  wait_for:
+    host: "{{ ansible_host }}"
+    port: "{{ k3s_api_port }}"
+    delay: 10
+    timeout: 180
+
+- name: Wait for node to be Ready
+  shell: k3s kubectl get node {{ inventory_hostname }} -o jsonpath='{.status.conditions[-1].type}'
+  register: node_status
+  until: node_status.stdout == "Ready"
+  retries: 20
+  delay: 10
+
+- name: Create manifests directory
+  file:
+    path: /var/lib/k3s-manifests
+    state: directory
+    mode: "0700"
+
+- name: Template kube-vip manifest
+  template:
+    src: "{{ playbook_dir }}/manifests/kube-vip.yml"
+    dest: /var/lib/k3s-manifests/kube-vip.yml
+
+- name: Template kube-vip cloud controller manifest
+  template:
+    src: "{{ playbook_dir }}/manifests/kube-vip-cloud-controller.yml"
+    dest: /var/lib/k3s-manifests/kube-vip-cloud-controller.yml
+
+- name: Apply kube-vip
+  shell: k3s kubectl apply -f /var/lib/k3s-manifests/kube-vip.yml
+
+- name: Apply kube-vip cloud controller
+  shell: k3s kubectl apply -f /var/lib/k3s-manifests/kube-vip-cloud-controller.yml
+
+- name: Wait for kube-vip VIP to be available
+  wait_for:
+    host: "{{ k3s_vip }}"
+    port: "{{ k3s_api_port }}"
+    delay: 5
+    timeout: 60
+
+- name: Fetch kubeconfig
+  fetch:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: "~/.kube/k3s.yaml"
+    flat: yes
+
+- name: Fix kubeconfig server address to VIP
+  delegate_to: localhost
+  become: no
+  replace:
+    path: "~/.kube/k3s.yaml"
+    regexp: 'https://127\.0\.0\.1:6443'
+    replace: "https://{{ k3s_vip }}:{{ k3s_api_port }}"

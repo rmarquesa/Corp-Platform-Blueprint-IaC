@@ -1,0 +1,70 @@
+scope: {{ patroni_scope }}
+name: {{ inventory_hostname }}
+
+restapi:
+  listen: 0.0.0.0:8008
+  connect_address: {{ ansible_host }}:8008
+
+etcd3:
+  hosts:
+{% for name, ip in etcd_nodes.items() %}
+    - {{ ip }}:2379
+{% endfor %}
+
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 30
+    maximum_lag_on_failover: 1048576
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+      parameters:
+        wal_level: replica
+        hot_standby: "on"
+        max_wal_senders: 10
+        max_replication_slots: 10
+        wal_log_hints: "on"
+
+  initdb:
+    - encoding: UTF8
+    - data-checksums
+
+  pg_hba:
+    - local all postgres peer
+    - local all all scram-sha-256
+    - host replication replicator 10.10.0.0/24 scram-sha-256
+    - host all all 10.10.0.0/24 scram-sha-256
+
+  users:
+    keycloak:
+      password: {{ vault_keycloak_db_password }}
+      options:
+        - createdb
+
+postgresql:
+  listen: 0.0.0.0:5432
+  connect_address: {{ ansible_host }}:5432
+  data_dir: /var/lib/postgresql/{{ postgresql_version }}/patroni
+  bin_dir: /usr/lib/postgresql/{{ postgresql_version }}/bin
+  pgpass: /tmp/pgpass0
+  authentication:
+    replication:
+      username: replicator
+      password: {{ vault_replication_password }}
+    superuser:
+      username: postgres
+      password: {{ vault_postgres_superuser_password }}
+    rewind:
+      username: rewind_user
+      password: {{ vault_rewind_password }}
+  parameters:
+    unix_socket_directories: /var/run/postgresql
+    max_connections: 200
+
+tags:
+  nofailover: false
+  noloadbalance: false
+  clonefrom: false
+  nosync: false

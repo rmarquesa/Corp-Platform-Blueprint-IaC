@@ -1,0 +1,87 @@
+---
+- name: Check if Harbor already installed
+  stat:
+    path: "{{ harbor_install_dir }}/docker-compose.yml"
+  register: harbor_installed
+
+- name: Download Harbor offline installer
+  when: not harbor_installed.stat.exists
+  get_url:
+    url: "https://github.com/goharbor/harbor/releases/download/v{{ harbor_version }}/harbor-offline-installer-v{{ harbor_version }}.tgz"
+    dest: /tmp/harbor.tgz
+    mode: "0644"
+
+- name: Extract Harbor installer
+  when: not harbor_installed.stat.exists
+  unarchive:
+    src: /tmp/harbor.tgz
+    dest: /opt
+    remote_src: true
+
+- name: Create Harbor database in Patroni
+  community.postgresql.postgresql_db:
+    name: "{{ harbor_db_name }}"
+    owner: "{{ harbor_db_user }}"
+    state: present
+    login_host: "{{ harbor_db_host }}"
+    login_port: "{{ harbor_db_port }}"
+    login_user: postgres
+    login_password: "{{ vault_postgres_superuser_password }}"
+
+- name: Create Harbor database user
+  community.postgresql.postgresql_user:
+    name: "{{ harbor_db_user }}"
+    password: "{{ vault_harbor_db_password }}"
+    db: "{{ harbor_db_name }}"
+    priv: ALL
+    state: present
+    login_host: "{{ harbor_db_host }}"
+    login_port: "{{ harbor_db_port }}"
+    login_user: postgres
+    login_password: "{{ vault_postgres_superuser_password }}"
+  no_log: true
+
+- name: Write harbor.yml configuration
+  template:
+    src: harbor.yml.j2
+    dest: "{{ harbor_install_dir }}/harbor.yml"
+    mode: "0640"
+
+- name: Run Harbor installer
+  command: "{{ harbor_install_dir }}/install.sh --with-trivy"
+  args:
+    chdir: "{{ harbor_install_dir }}"
+    creates: "{{ harbor_install_dir }}/.installed"
+
+- name: Mark Harbor as installed
+  file:
+    path: "{{ harbor_install_dir }}/.installed"
+    state: touch
+    mode: "0644"
+
+- name: Ensure Harbor starts on boot via systemd
+  copy:
+    dest: /etc/systemd/system/harbor.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Harbor Container Registry
+      After=docker.service
+      Requires=docker.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      WorkingDirectory={{ harbor_install_dir }}
+      ExecStart=/usr/bin/docker compose up -d
+      ExecStop=/usr/bin/docker compose down
+      TimeoutStartSec=300
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Enable Harbor service
+  systemd:
+    name: harbor
+    enabled: true
+    daemon_reload: true

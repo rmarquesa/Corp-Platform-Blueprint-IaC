@@ -1,0 +1,61 @@
+longhorn:
+  defaultSettings:
+    defaultDataPath: /var/lib/longhorn
+    defaultReplicaCount: 2
+    storageMinimalAvailablePercentage: 15
+    storageOverProvisioningPercentage: 150
+    autoSalvage: true
+    autoDeletePodWhenVolumeDetachedUnexpectedly: true
+    nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
+    taintToleration: "workload=infra:NoSchedule"
+
+  persistence:
+    defaultClass: true
+    defaultClassReplicaCount: 2
+    reclaimPolicy: Retain
+
+  longhornManager:
+    tolerations:
+      - key: workload
+        operator: Exists
+        effect: NoSchedule
+
+  longhornDriver:
+    tolerations:
+      - key: workload
+        operator: Exists
+        effect: NoSchedule
+
+  longhornUI:
+    nodeSelector:
+      workload: infra
+    tolerations:
+      - key: workload
+        operator: Equal
+        value: infra
+        effect: NoSchedule
+
+  ingress:
+    enabled: false
+
+  extraObjects:
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: longhorn
+        namespace: longhorn-system
+      spec:
+        parentRefs:
+          - name: traefik-gateway
+            namespace: traefik
+            sectionName: web
+        hostnames:
+          - longhorn.l3s.local
+        rules:
+          - matches:
+              - path:
+                  type: PathPrefix
+                  value: /
+            backendRefs:
+              - name: longhorn-frontend
+                port: 80

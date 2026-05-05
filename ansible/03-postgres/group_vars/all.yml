@@ -1,0 +1,35 @@
+ansible_user: ubuntu
+
+postgresql_version: 17
+
+patroni_scope: postgres-ha
+patroni_vip: 10.10.0.21
+patroni_vip_netmask: 24
+patroni_vip_interface: eth0
+
+etcd_version: "3.5.17"
+etcd_cluster_name: patroni
+etcd_nodes:
+  db-1:      "10.10.0.20"
+  db-2:      "10.10.0.22"
+  db-arbiter: "10.10.0.23"
+
+postgresql_databases:
+  - name: keycloak
+    owner: keycloak
+  - name: harbor
+    owner: harbor
+
+postgresql_users:
+  - name: keycloak
+    password: "{{ lookup('env', 'VAULT_KEYCLOAK_DB_PASSWORD') | mandatory }}"
+    db: keycloak
+  - name: harbor
+    password: "{{ lookup('env', 'VAULT_HARBOR_DB_PASSWORD') | mandatory }}"
+    db: harbor
+
+vault_postgres_superuser_password: "{{ lookup('env', 'VAULT_POSTGRES_SUPERUSER_PASSWORD') | mandatory }}"
+vault_replication_password:         "{{ lookup('env', 'VAULT_REPLICATION_PASSWORD') | mandatory }}"
+vault_rewind_password:              "{{ lookup('env', 'VAULT_REWIND_PASSWORD') | mandatory }}"
+vault_keycloak_db_password:         "{{ lookup('env', 'VAULT_KEYCLOAK_DB_PASSWORD') | mandatory }}"
+vault_harbor_db_password:           "{{ lookup('env', 'VAULT_HARBOR_DB_PASSWORD') | mandatory }}"

@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: {{ .Values.tunnel.replicas }}
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      {{- if .Values.tunnel.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.tunnel.nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if .Values.tunnel.tolerations }}
+      tolerations:
+        {{- toYaml .Values.tunnel.tolerations | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: cloudflared
+          image: {{ .Values.tunnel.image.repository }}:{{ .Values.tunnel.image.tag }}
+          args:
+            - tunnel
+            - --config
+            - /etc/cloudflared/config/config.yaml
+            - run
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: config
+              mountPath: /etc/cloudflared/config
+              readOnly: true
+            - name: credentials
+              mountPath: /etc/cloudflared
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: cloudflared-config
+        - name: credentials
+          secret:
+            secretName: {{ .Values.tunnel.credentialsSecret }}

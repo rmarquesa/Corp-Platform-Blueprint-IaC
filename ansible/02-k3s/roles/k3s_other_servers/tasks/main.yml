@@ -1,0 +1,25 @@
+---
+- name: Join k3s cluster as server via VIP
+  shell: |
+    curl -sfL https://get.k3s.io | \
+    INSTALL_K3S_VERSION="{{ k3s_version }}" \
+    K3S_TOKEN="{{ k3s_token }}" \
+    sh -s - server \
+    --server https://{{ k3s_vip }}:{{ k3s_api_port }} \
+    {{ k3s_server_extra_args }}
+  args:
+    creates: /usr/local/bin/k3s
+
+- name: Wait for k3s API to be ready
+  wait_for:
+    host: "{{ ansible_host }}"
+    port: "{{ k3s_api_port }}"
+    delay: 10
+    timeout: 180
+
+- name: Wait for node to be Ready
+  shell: k3s kubectl get node {{ inventory_hostname }} -o jsonpath='{.status.conditions[-1].type}'
+  register: node_status
+  until: node_status.stdout == "Ready"
+  retries: 20
+  delay: 10

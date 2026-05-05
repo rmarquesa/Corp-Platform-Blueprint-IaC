@@ -1,0 +1,71 @@
+keycloak:
+  image:
+    tag: "26.3.3"
+
+  replicas: 1
+
+  command:
+    - /opt/keycloak/bin/kc.sh
+    - start
+
+  extraEnv: |
+    - name: KC_DB
+      value: postgres
+    - name: KC_DB_URL_HOST
+      value: "10.10.0.21"
+    - name: KC_DB_URL_PORT
+      value: "5432"
+    - name: KC_DB_URL_DATABASE
+      value: keycloak
+    - name: KC_DB_USERNAME
+      value: keycloak
+    - name: KC_DB_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: keycloak-db-secret
+          key: password
+    - name: KC_BOOTSTRAP_ADMIN_USERNAME
+      value: admin
+    - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: keycloak-admin-secret
+          key: admin-password
+    - name: KC_HOSTNAME_STRICT
+      value: "false"
+    - name: KC_HOSTNAME
+      value: keycloak.l3s.local
+
+  proxy:
+    mode: xforwarded
+
+  nodeSelector:
+    workload: infra
+
+  tolerations:
+    - key: workload
+      operator: Equal
+      value: infra
+      effect: NoSchedule
+
+  extraObjects:
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: keycloak
+        namespace: keycloak
+      spec:
+        parentRefs:
+          - name: traefik-gateway
+            namespace: traefik
+            sectionName: web
+        hostnames:
+          - keycloak.l3s.local
+        rules:
+          - matches:
+              - path:
+                  type: PathPrefix
+                  value: /
+            backendRefs:
+              - name: keycloak-http
+                port: 80

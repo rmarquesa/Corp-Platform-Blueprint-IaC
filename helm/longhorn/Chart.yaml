@@ -1,0 +1,10 @@
+apiVersion: v2
+name: longhorn
+description: Distributed block storage with NFS backup for k3s cluster
+type: application
+version: 1.0.0
+
+dependencies:
+  - name: longhorn
+    version: "1.7.2"
+    repository: https://charts.longhorn.io

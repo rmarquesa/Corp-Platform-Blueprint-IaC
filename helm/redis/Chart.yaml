@@ -1,0 +1,10 @@
+apiVersion: v2
+name: redis
+description: Redis HA with Sentinel for k3s cluster
+type: application
+version: 1.0.0
+
+dependencies:
+  - name: redis
+    version: "21.2.7"
+    repository: https://charts.bitnami.com/bitnami

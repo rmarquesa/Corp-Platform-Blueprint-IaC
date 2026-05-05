@@ -1,0 +1,38 @@
+pgbouncer:
+  replicaCount: 2
+
+  nodeSelector:
+    workload: infra
+
+  tolerations:
+    - key: workload
+      operator: Equal
+      value: infra
+      effect: NoSchedule
+
+  config:
+    adminUser: pgbouncer
+    adminPassword: ""  # set via existingSecret
+
+    databases:
+      keycloak:
+        host: 10.10.0.21   # Patroni VIP
+        port: 5432
+        dbname: keycloak
+
+    pgbouncer:
+      pool_mode: transaction
+      max_client_conn: 1000
+      default_pool_size: 25
+      reserve_pool_size: 5
+      reserve_pool_timeout: 3
+      server_idle_timeout: 600
+      client_idle_timeout: 0
+      log_connections: 0
+      log_disconnections: 0
+
+  existingSecret: pgbouncer-secret  # must contain: PGBOUNCER_USERLIST
+
+  service:
+    type: ClusterIP
+    port: 5432

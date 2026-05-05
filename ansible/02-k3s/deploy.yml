@@ -1,0 +1,6 @@
+---
+- name: Deploy Kubernetes manifests
+  hosts: k3s_first_server
+  become: true
+  roles:
+    - k3s_manifests

@@ -1,0 +1,17 @@
+ansible_user: ubuntu
+
+k3s_version: v1.35.4+k3s1
+k3s_token: "{{ lookup('env', 'VAULT_K3S_TOKEN') | mandatory }}"
+
+k3s_first_server_ip: "10.10.0.10"
+k3s_api_port: 6443
+
+k3s_vip: "10.10.0.100"
+k3s_lb_range: "10.10.0.200-10.10.0.250"
+
+k3s_server_extra_args: >-
+  --disable=traefik
+  --disable=servicelb
+  --node-ip={{ ansible_host }}
+  --advertise-address={{ ansible_host }}
+  --tls-san={{ k3s_vip }}

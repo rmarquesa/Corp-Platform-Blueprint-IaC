@@ -1,0 +1,36 @@
+---
+- name: Enable QEMU guest agent on all VMs
+  hosts: all
+  become: false
+  gather_facts: false
+  tasks:
+    - name: Read current VM config from Proxmox
+      command: >
+        ssh -o StrictHostKeyChecking=no -o BatchMode=yes
+        root@{{ proxmox_host }} qm config {{ vm_id }}
+      delegate_to: localhost
+      register: qm_config
+      changed_when: false
+
+    - name: Enable QEMU guest agent in Proxmox config
+      command: >
+        ssh -o StrictHostKeyChecking=no -o BatchMode=yes
+        root@{{ proxmox_host }} qm set {{ vm_id }} --agent enabled=1
+      delegate_to: localhost
+      register: agent_enabled
+      changed_when: true
+      when: "'agent: 1' not in qm_config.stdout"
+
+    - name: Reboot VM via Proxmox to activate virtio-serial channel
+      command: >
+        ssh -o StrictHostKeyChecking=no -o BatchMode=yes
+        root@{{ proxmox_host }} qm reboot {{ vm_id }}
+      delegate_to: localhost
+      changed_when: true
+      when: agent_enabled is changed
+
+    - name: Wait for VM SSH to recover after reboot
+      wait_for_connection:
+        delay: 10
+        timeout: 120
+      when: agent_enabled is changed

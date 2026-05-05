@@ -1,0 +1,24 @@
+---
+- name: Join k3s cluster as agent
+  shell: |
+    curl -sfL https://get.k3s.io | \
+    INSTALL_K3S_VERSION="{{ k3s_version }}" \
+    K3S_TOKEN="{{ k3s_token }}" \
+    K3S_URL="https://{{ k3s_vip }}:{{ k3s_api_port }}" \
+    sh -s - agent \
+    --node-ip={{ ansible_host }}
+  args:
+    creates: /usr/local/bin/k3s-agent
+
+- name: Enable and start k3s-agent service
+  systemd:
+    name: k3s-agent
+    enabled: true
+    state: started
+
+- name: Wait for kubelet port to be ready
+  wait_for:
+    host: "{{ ansible_host }}"
+    port: 10250
+    delay: 10
+    timeout: 180

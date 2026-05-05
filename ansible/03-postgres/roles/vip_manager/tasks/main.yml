@@ -1,0 +1,75 @@
+---
+- name: Check if vip-manager binary exists
+  stat:
+    path: /usr/local/bin/vip-manager
+  register: vip_binary
+
+- name: Download vip-manager binary
+  when: not vip_binary.stat.exists
+  get_url:
+    url: "https://github.com/cybertec-postgresql/vip-manager/releases/download/v2.6.0/vip-manager_2.6.0_Linux_x86_64.tar.gz"
+    dest: /tmp/vip-manager.tar.gz
+    mode: "0644"
+
+- name: Create vip-manager extract directory
+  when: not vip_binary.stat.exists
+  file:
+    path: /tmp/vip-manager-extract
+    state: directory
+    mode: "0755"
+
+- name: Extract vip-manager
+  when: not vip_binary.stat.exists
+  unarchive:
+    src: /tmp/vip-manager.tar.gz
+    dest: /tmp/vip-manager-extract
+    remote_src: true
+
+- name: Find and install vip-manager binary
+  when: not vip_binary.stat.exists
+  shell: |
+    set -e
+    bin=$(find /tmp/vip-manager-extract -name "vip-manager" -type f | head -1)
+    if [ -z "$bin" ]; then
+      echo "vip-manager binary not found after extraction" >&2
+      exit 1
+    fi
+    install -m 0755 "$bin" /usr/local/bin/vip-manager
+  changed_when: true
+
+- name: Write vip-manager configuration
+  template:
+    src: vip-manager.yml.j2
+    dest: /etc/patroni/vip-manager.yml
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  notify: restart vip-manager
+
+- name: Write vip-manager systemd unit
+  copy:
+    dest: /etc/systemd/system/vip-manager.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Patroni VIP Manager
+      After=patroni.service
+      Requires=patroni.service
+
+      [Service]
+      Type=simple
+      User=root
+      ExecStart=/usr/local/bin/vip-manager --config /etc/patroni/vip-manager.yml
+      Restart=on-failure
+      RestartSec=5s
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: restart vip-manager
+
+- name: Enable and start vip-manager
+  systemd:
+    name: vip-manager
+    enabled: true
+    state: started
+    daemon_reload: true

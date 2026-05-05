@@ -1,0 +1,11 @@
+ansible_user: root
+
+# Tailscale auth key — generate a reusable key at https://login.tailscale.com/admin/settings/keys
+# Recommended: create a tag "tag:subnet-router" and use a pre-auth key with that tag
+tailscale_auth_key: "{{ lookup('env', 'VAULT_TAILSCALE_AUTH_KEY') | mandatory }}"
+
+# The private network CIDR this container will advertise as a subnet router
+tailscale_subnet: "10.10.0.0/24"
+
+# Hostname visible in the Tailscale admin console
+tailscale_hostname: "proxmox-router"

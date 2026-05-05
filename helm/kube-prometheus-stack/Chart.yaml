@@ -1,0 +1,10 @@
+apiVersion: v2
+name: kube-prometheus-stack
+description: Prometheus, Grafana and Alertmanager for k3s cluster
+type: application
+version: 1.0.0
+
+dependencies:
+  - name: kube-prometheus-stack
+    version: "70.4.2"
+    repository: https://prometheus-community.github.io/helm-charts

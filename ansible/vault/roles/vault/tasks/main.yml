@@ -1,0 +1,93 @@
+---
+- name: Install dependencies
+  apt:
+    name:
+      - curl
+      - gnupg
+      - jq
+    state: present
+    update_cache: true
+
+- name: Add HashiCorp apt signing key
+  get_url:
+    url: https://apt.releases.hashicorp.com/gpg
+    dest: /usr/share/keyrings/hashicorp.asc
+    mode: "0644"
+
+- name: Add HashiCorp apt repository
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/hashicorp.asc] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+    state: present
+    filename: hashicorp
+
+- name: Install Vault {{ vault_version }}
+  apt:
+    name: "vault={{ vault_version }}-1"
+    state: present
+    update_cache: true
+
+- name: Create vault data directory
+  file:
+    path: "{{ vault_data_dir }}"
+    state: directory
+    owner: vault
+    group: vault
+    mode: "0700"
+
+- name: Write Vault configuration
+  template:
+    src: vault.hcl.j2
+    dest: "{{ vault_config_dir }}/vault.hcl"
+    owner: vault
+    group: vault
+    mode: "0640"
+  notify: restart vault
+
+- name: Enable and start Vault
+  systemd:
+    name: vault
+    enabled: true
+    state: started
+
+- name: Check if Vault is initialized
+  command: vault status -format=json
+  environment:
+    VAULT_ADDR: "{{ vault_api_addr }}"
+  register: vault_status_raw
+  failed_when: false
+  changed_when: false
+
+- name: Parse Vault status
+  set_fact:
+    vault_status: "{{ vault_status_raw.stdout | from_json }}"
+  when: vault_status_raw.rc in [0, 2]
+
+- name: Initialize Vault
+  command: vault operator init -key-shares=5 -key-threshold=3 -format=json
+  environment:
+    VAULT_ADDR: "{{ vault_api_addr }}"
+  register: vault_init
+  when:
+    - vault_status is defined
+    - not vault_status.initialized
+
+- name: Save init output to file (store this securely!)
+  copy:
+    content: "{{ vault_init.stdout }}"
+    dest: /root/vault-init.json
+    owner: root
+    group: root
+    mode: "0400"
+  when: vault_init is not skipped and vault_init.stdout is defined
+
+- name: Print init reminder
+  debug:
+    msg:
+      - "================================================================"
+      - "Vault initialized! Keys saved to /root/vault-init.json"
+      - "IMPORTANT: Copy vault-init.json to a safe location and delete it"
+      - "           from the server after storing the keys securely."
+      - "To unseal: vault operator unseal <key>"
+      - "           (repeat 3 times with different keys)"
+      - "================================================================"
+  when: vault_init is not skipped and vault_init.stdout is defined

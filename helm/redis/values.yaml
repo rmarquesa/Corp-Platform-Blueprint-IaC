@@ -1,0 +1,41 @@
+redis:
+  architecture: replication
+
+  auth:
+    enabled: true
+    existingSecret: argocd-redis-secret
+    existingSecretPasswordKey: redis-password
+
+  master:
+    nodeSelector:
+      workload: infra
+    tolerations:
+      - key: workload
+        operator: Equal
+        value: infra
+        effect: NoSchedule
+    persistence:
+      enabled: true
+      storageClass: longhorn
+      size: 5Gi
+
+  replica:
+    replicaCount: 2
+    nodeSelector:
+      workload: infra
+    tolerations:
+      - key: workload
+        operator: Equal
+        value: infra
+        effect: NoSchedule
+    persistence:
+      enabled: true
+      storageClass: longhorn
+      size: 5Gi
+
+  sentinel:
+    enabled: true
+    quorum: 2
+
+  service:
+    type: ClusterIP

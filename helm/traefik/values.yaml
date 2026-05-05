@@ -1,0 +1,49 @@
+traefik:
+  deployment:
+    replicas: 2
+
+  nodeSelector:
+    workload: infra
+
+  tolerations:
+    - key: workload
+      operator: Equal
+      value: infra
+      effect: NoSchedule
+
+  service:
+    type: ClusterIP  # only reachable inside cluster by cloudflared
+
+  ingressClass:
+    enabled: true
+    isDefaultClass: true
+
+  providers:
+    kubernetesIngress:
+      enabled: true
+    kubernetesCRD:
+      enabled: true
+    kubernetesGateway:
+      enabled: true
+
+  gateway:
+    enabled: true
+    name: traefik-gateway
+    listeners:
+      web:
+        port: 80
+        protocol: HTTP
+        namespacePolicy:
+          from: All
+
+  ports:
+    web:
+      port: 80
+      expose:
+        default: true
+
+  logs:
+    general:
+      level: INFO
+    access:
+      enabled: true

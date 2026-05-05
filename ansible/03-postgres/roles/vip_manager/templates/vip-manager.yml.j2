@@ -1,0 +1,16 @@
+ip: "{{ patroni_vip }}"
+netmask: {{ patroni_vip_netmask }}
+interface: "{{ patroni_vip_interface }}"
+
+dcs-type: etcd3
+dcs-endpoints:
+{% for name, ip in etcd_nodes.items() %}
+  - "http://{{ ip }}:2379"
+{% endfor %}
+
+patroni-scope: {{ patroni_scope }}
+patroni-namespace: /service/
+trigger-key: /service/{{ patroni_scope }}/leader
+trigger-value: "{{ inventory_hostname }}"
+
+interval: 1000

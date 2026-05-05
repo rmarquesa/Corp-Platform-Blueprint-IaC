@@ -1,0 +1,332 @@
+kube-prometheus-stack:
+
+  prometheusOperator:
+    admissionWebhooks:
+      enabled: false
+      patch:
+        enabled: false
+
+  # --- Grafana ---
+  grafana:
+    enabled: true
+    replicas: 1
+
+    nodeSelector:
+      workload: infra
+    tolerations:
+      - key: workload
+        operator: Equal
+        value: infra
+        effect: NoSchedule
+
+    persistence:
+      enabled: true
+      storageClassName: longhorn
+      size: 5Gi
+
+    ingress:
+      enabled: false
+
+    # Admin password + Keycloak OAuth secret injected via k8s secret
+    envFrom:
+      - secretRef:
+          name: grafana-secrets
+
+    plugins:
+      - grafana-clock-panel
+      - grafana-polystat-panel
+      - grafana-piechart-panel
+
+    grafana.ini:
+      server:
+        root_url: https://grafana.l3s.local
+        serve_from_sub_path: false
+      users:
+        default_theme: dark
+        auto_assign_org: true
+        auto_assign_org_role: Viewer
+        viewers_can_edit: false
+      auth:
+        disable_login_form: false
+        signout_redirect_url: https://keycloak.l3s.local/realms/master/protocol/openid-connect/logout
+      auth.generic_oauth:
+        enabled: true
+        name: "l3softwares SSO"
+        allow_sign_up: true
+        client_id: grafana
+        client_secret: ${GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET}
+        scopes: openid email profile offline_access roles
+        email_attribute_path: email
+        login_attribute_path: preferred_username
+        name_attribute_path: name
+        auth_url: https://keycloak.l3s.local/realms/master/protocol/openid-connect/auth
+        token_url: https://keycloak.l3s.local/realms/master/protocol/openid-connect/token
+        api_url: https://keycloak.l3s.local/realms/master/protocol/openid-connect/userinfo
+        role_attribute_path: "contains(roles[*], 'grafana-admin') && 'Admin' || contains(roles[*], 'grafana-editor') && 'Editor' || 'Viewer'"
+        use_pkce: true
+      analytics:
+        check_for_updates: false
+        check_for_plugin_updates: false
+        reporting_enabled: false
+      news:
+        news_feed_enabled: false
+      security:
+        cookie_secure: true
+        allow_embedding: false
+
+    dashboardProviders:
+      dashboardproviders.yaml:
+        apiVersion: 1
+        providers:
+          - name: kubernetes
+            orgId: 1
+            folder: "Kubernetes"
+            type: file
+            disableDeletion: false
+            editable: true
+            options:
+              path: /var/lib/grafana/dashboards/kubernetes
+          - name: gitops
+            orgId: 1
+            folder: "GitOps"
+            type: file
+            disableDeletion: false
+            editable: true
+            options:
+              path: /var/lib/grafana/dashboards/gitops
+          - name: ingress
+            orgId: 1
+            folder: "Ingress"
+            type: file
+            disableDeletion: false
+            editable: true
+            options:
+              path: /var/lib/grafana/dashboards/ingress
+          - name: storage
+            orgId: 1
+            folder: "Storage"
+            type: file
+            disableDeletion: false
+            editable: true
+            options:
+              path: /var/lib/grafana/dashboards/storage
+          - name: database
+            orgId: 1
+            folder: "Database"
+            type: file
+            disableDeletion: false
+            editable: true
+            options:
+              path: /var/lib/grafana/dashboards/database
+          - name: identity
+            orgId: 1
+            folder: "Identity"
+            type: file
+            disableDeletion: false
+            editable: true
+            options:
+              path: /var/lib/grafana/dashboards/identity
+          - name: observability
+            orgId: 1
+            folder: "Observability"
+            type: file
+            disableDeletion: false
+            editable: true
+            options:
+              path: /var/lib/grafana/dashboards/observability
+
+    dashboards:
+      kubernetes:
+        kubernetes-cluster:
+          gnetId: 7249
+          revision: 1
+          datasource: Prometheus
+        node-exporter-full:
+          gnetId: 1860
+          revision: 37
+          datasource: Prometheus
+        etcd:
+          gnetId: 3070
+          revision: 3
+          datasource: Prometheus
+      gitops:
+        argocd:
+          gnetId: 14584
+          revision: 1
+          datasource: Prometheus
+      ingress:
+        traefik:
+          gnetId: 17346
+          revision: 9
+          datasource: Prometheus
+      storage:
+        longhorn:
+          gnetId: 16888
+          revision: 9
+          datasource: Prometheus
+      database:
+        postgresql:
+          gnetId: 9628
+          revision: 7
+          datasource: Prometheus
+        pgbouncer:
+          gnetId: 455
+          revision: 2
+          datasource: Prometheus
+        redis:
+          gnetId: 11835
+          revision: 1
+          datasource: Prometheus
+      identity:
+        keycloak:
+          gnetId: 19659
+          revision: 2
+          datasource: Prometheus
+      observability:
+        loki-logs:
+          gnetId: 13639
+          revision: 2
+          datasource: Loki
+
+    additionalDataSources:
+      - name: Loki
+        type: loki
+        uid: loki
+        url: http://loki-gateway.monitoring.svc.cluster.local
+        access: proxy
+        isDefault: false
+        jsonData:
+          derivedFields:
+            - datasourceUid: tempo
+              matcherRegex: '"trace_id":"(\w+)"'
+              name: TraceID
+              url: "$${__value.raw}"
+      - name: Tempo
+        type: tempo
+        uid: tempo
+        url: http://tempo.monitoring.svc.cluster.local:3100
+        access: proxy
+        isDefault: false
+        jsonData:
+          tracesToLogsV2:
+            datasourceUid: loki
+            spanStartTimeShift: "-1h"
+            spanEndTimeShift: "1h"
+          serviceMap:
+            datasourceUid: prometheus
+          nodeGraph:
+            enabled: true
+
+    extraObjects:
+      - apiVersion: gateway.networking.k8s.io/v1
+        kind: HTTPRoute
+        metadata:
+          name: grafana
+          namespace: monitoring
+        spec:
+          parentRefs:
+            - name: traefik-gateway
+              namespace: traefik
+              sectionName: web
+          hostnames:
+            - grafana.l3s.local
+          rules:
+            - matches:
+                - path:
+                    type: PathPrefix
+                    value: /
+              backendRefs:
+                - name: kube-prometheus-stack-grafana
+                  port: 80
+
+  # --- Prometheus ---
+  prometheus:
+    prometheusSpec:
+      replicas: 1
+      nodeSelector:
+        workload: infra
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: infra
+          effect: NoSchedule
+      retention: 30d
+      storageSpec:
+        volumeClaimTemplate:
+          spec:
+            storageClassName: longhorn
+            accessModes: [ReadWriteOnce]
+            resources:
+              requests:
+                storage: 10Gi
+
+  # --- Alertmanager ---
+  alertmanager:
+    alertmanagerSpec:
+      replicas: 2
+      nodeSelector:
+        workload: infra
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: infra
+          effect: NoSchedule
+      storage:
+        volumeClaimTemplate:
+          spec:
+            storageClassName: longhorn
+            accessModes: [ReadWriteOnce]
+            resources:
+              requests:
+                storage: 2Gi
+
+    config:
+      global:
+        resolve_timeout: 5m
+      route:
+        group_by: [alertname, namespace]
+        group_wait: 30s
+        group_interval: 5m
+        repeat_interval: 12h
+        receiver: "null"
+        routes:
+          - matchers:
+              - alertname = Watchdog
+            receiver: "null"
+      receivers:
+        - name: "null"
+        # - name: slack
+        #   slack_configs:
+        #     - api_url: https://hooks.slack.com/services/...
+        #       channel: '#alerts'
+
+  # --- Node Exporter (DaemonSet — runs on all nodes) ---
+  nodeExporter:
+    enabled: true
+    tolerations:
+      - key: workload
+        operator: Exists
+        effect: NoSchedule
+
+  # --- kube-state-metrics ---
+  kubeStateMetrics:
+    enabled: true
+
+  kube-state-metrics:
+    nodeSelector:
+      workload: infra
+    tolerations:
+      - key: workload
+        operator: Equal
+        value: infra
+        effect: NoSchedule
+
+  # --- Disable components not present in k3s ---
+  kubeEtcd:
+    enabled: false
+  kubeControllerManager:
+    enabled: false
+  kubeScheduler:
+    enabled: false
+  kubeProxy:
+    enabled: false

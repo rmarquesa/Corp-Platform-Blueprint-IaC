@@ -1,0 +1,39 @@
+tunnel:
+  # Run: cloudflared tunnel create homelab
+  # Then fill id and name from the output
+  id: ""
+  name: homelab
+
+  replicas: 2
+
+  image:
+    repository: cloudflare/cloudflared
+    tag: "2025.4.0"
+
+  # Credentials JSON from: cloudflared tunnel create homelab
+  # Store in secret: kubectl create secret generic cloudflared-credentials \
+  #   --from-file=credentials.json=~/.cloudflared/<tunnel-id>.json \
+  #   -n cloudflared
+  credentialsSecret: cloudflared-credentials
+
+  # All traffic is routed to Traefik — routing is handled internally
+  traefikService: traefik.traefik.svc.cluster.local
+
+  # Your Cloudflare domain
+  domain: l3s.local
+
+  nodeSelector:
+    workload: infra
+
+  tolerations:
+    - key: workload
+      operator: Equal
+      value: infra
+      effect: NoSchedule
+
+  # Public hostnames routed through the tunnel
+  # DNS CNAME records are created automatically via: cloudflared tunnel route dns homelab <hostname>
+  routes:
+    - hostname: argocd
+    - hostname: keycloak
+    - hostname: traefik

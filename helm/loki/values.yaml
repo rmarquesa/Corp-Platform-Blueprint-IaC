@@ -1,0 +1,67 @@
+loki:
+  deploymentMode: SingleBinary
+
+  loki:
+    auth_enabled: false
+    commonConfig:
+      replication_factor: 1
+    storage:
+      type: filesystem
+    schemaConfig:
+      configs:
+        - from: "2024-01-01"
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+
+  singleBinary:
+    replicas: 1
+    nodeSelector:
+      workload: infra
+    tolerations:
+      - key: workload
+        operator: Equal
+        value: infra
+        effect: NoSchedule
+    persistence:
+      enabled: true
+      storageClass: longhorn
+      size: 10Gi
+
+  # Promtail — DaemonSet that ships logs from every node (runs on all nodes)
+  promtail:
+    enabled: true
+    tolerations:
+      - key: workload
+        operator: Exists
+        effect: NoSchedule
+    config:
+      clients:
+        - url: http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push
+
+  # Disable distributed components (use singleBinary instead)
+  read:
+    replicas: 0
+  write:
+    replicas: 0
+  backend:
+    replicas: 0
+
+  chunksCache:
+    enabled: false
+
+  resultsCache:
+    enabled: false
+
+  gateway:
+    enabled: true
+    nodeSelector:
+      workload: infra
+    tolerations:
+      - key: workload
+        operator: Equal
+        value: infra
+        effect: NoSchedule

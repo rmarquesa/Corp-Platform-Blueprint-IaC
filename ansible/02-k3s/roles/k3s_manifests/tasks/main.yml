@@ -1,0 +1,29 @@
+---
+- name: Create manifests directory on server
+  file:
+    path: /var/lib/k3s-manifests
+    state: directory
+    mode: "0700"
+
+- name: Copy manifests to server
+  copy:
+    src: "{{ item }}"
+    dest: "/var/lib/k3s-manifests/{{ item | basename }}"
+    mode: "0600"
+  with_fileglob:
+    - "{{ playbook_dir }}/manifests/{{ manifest_filter | default('*') }}.yml"
+  register: copied_manifests
+
+- name: Apply manifests
+  shell: k3s kubectl apply -f /var/lib/k3s-manifests/{{ item.dest | basename }}
+  loop: "{{ copied_manifests.results }}"
+  when: copied_manifests.results | length > 0
+
+- name: Show cluster state
+  shell: k3s kubectl get all --all-namespaces
+  register: cluster_state
+  changed_when: false
+
+- name: Print cluster state
+  debug:
+    msg: "{{ cluster_state.stdout_lines }}"

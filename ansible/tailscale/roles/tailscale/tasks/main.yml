@@ -1,0 +1,68 @@
+---
+- name: Install prerequisites
+  apt:
+    name:
+      - curl
+      - ca-certificates
+      - gnupg
+    state: present
+    update_cache: yes
+
+- name: Add Tailscale GPG key
+  apt_key:
+    url: https://pkgs.tailscale.com/stable/debian/bookworm.gpg
+    state: present
+
+- name: Add Tailscale apt repository
+  apt_repository:
+    repo: "deb https://pkgs.tailscale.com/stable/debian bookworm main"
+    filename: tailscale
+    state: present
+
+- name: Install Tailscale
+  apt:
+    name: tailscale
+    state: present
+    update_cache: yes
+
+- name: Enable and start tailscaled
+  systemd:
+    name: tailscaled
+    enabled: true
+    state: started
+
+- name: Enable IP forwarding (IPv4)
+  sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    state: present
+    sysctl_set: yes
+    reload: yes
+
+- name: Enable IP forwarding (IPv6)
+  sysctl:
+    name: net.ipv6.conf.all.forwarding
+    value: "1"
+    state: present
+    sysctl_set: yes
+    reload: yes
+
+- name: Connect to Tailscale and advertise subnet route
+  shell: >
+    tailscale up
+    --authkey="{{ tailscale_auth_key }}"
+    --advertise-routes="{{ tailscale_subnet }}"
+    --accept-routes
+    --hostname="{{ tailscale_hostname }}"
+    --ssh
+  args:
+    creates: /var/lib/tailscale/tailscaled.state
+
+- name: Check Tailscale status
+  command: tailscale status
+  register: ts_status
+  changed_when: false
+
+- name: Show Tailscale status
+  debug:
+    msg: "{{ ts_status.stdout_lines }}"

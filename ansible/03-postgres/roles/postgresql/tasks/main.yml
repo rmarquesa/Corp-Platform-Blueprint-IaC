@@ -1,0 +1,28 @@
+---
+- name: Add PostgreSQL apt signing key
+  get_url:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /usr/share/keyrings/postgresql.asc
+    mode: "0644"
+
+- name: Add PostgreSQL apt repository
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/postgresql.asc] https://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    state: present
+    filename: pgdg
+
+- name: Install PostgreSQL {{ postgresql_version }}
+  apt:
+    name:
+      - postgresql-{{ postgresql_version }}
+      - postgresql-client-{{ postgresql_version }}
+      - postgresql-server-dev-{{ postgresql_version }}
+    state: present
+    update_cache: true
+
+- name: Stop and disable default PostgreSQL service
+  systemd:
+    name: postgresql
+    enabled: false
+    state: stopped
+  ignore_errors: true

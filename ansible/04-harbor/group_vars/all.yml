@@ -1,0 +1,22 @@
+ansible_user: ubuntu
+
+harbor_version: "2.12.2"
+harbor_install_dir: /opt/harbor
+harbor_data_dir: /data/harbor
+harbor_hostname: harbor.l3s.local
+harbor_http_port: 80
+
+# External PostgreSQL (Patroni VIP)
+harbor_db_host: 10.10.0.21
+harbor_db_port: 5432
+harbor_db_name: harbor
+harbor_db_user: harbor
+
+# Local Redis on this VM — use actual IP so Harbor Docker containers can reach it
+harbor_redis_host: 10.10.0.30
+harbor_redis_port: 6379
+
+vault_harbor_admin_password:      "{{ lookup('env', 'VAULT_HARBOR_ADMIN_PASSWORD') | mandatory }}"
+vault_harbor_db_password:         "{{ lookup('env', 'VAULT_HARBOR_DB_PASSWORD') | mandatory }}"
+vault_harbor_redis_password:      "{{ lookup('env', 'VAULT_HARBOR_REDIS_PASSWORD') | mandatory }}"
+vault_postgres_superuser_password: "{{ lookup('env', 'VAULT_POSTGRES_SUPERUSER_PASSWORD') | mandatory }}"

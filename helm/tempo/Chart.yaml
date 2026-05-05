@@ -1,0 +1,10 @@
+apiVersion: v2
+name: tempo
+description: Tempo distributed tracing for k3s cluster
+type: application
+version: 1.0.0
+
+dependencies:
+  - name: tempo
+    version: "1.14.1"
+    repository: https://grafana.github.io/helm-charts

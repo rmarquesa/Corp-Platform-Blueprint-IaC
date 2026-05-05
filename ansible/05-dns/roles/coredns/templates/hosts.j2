@@ -1,0 +1,8 @@
+# Managed by Ansible — do not edit manually
+# Internal DNS for {{ internal_domain }}
+
+{% for entry in dns_hosts %}
+{% for name in entry.names %}
+{{ entry.ip }}    {{ name }}
+{% endfor %}
+{% endfor %}

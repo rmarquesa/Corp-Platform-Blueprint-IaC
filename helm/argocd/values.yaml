@@ -1,0 +1,111 @@
+argo-cd:
+  global:
+    domain: argocd.l3s.local
+    nodeSelector:
+      workload: infra
+    tolerations:
+      - key: workload
+        operator: Equal
+        value: infra
+        effect: NoSchedule
+
+  configs:
+    params:
+      server.insecure: "true"
+    secret:
+      # Managed out-of-band — helm must not overwrite the existing argocd-secret
+      createSecret: false
+    rbac:
+      policy.default: role:readonly
+    repositories:
+      grafana:
+        url: https://grafana.github.io/helm-charts
+        name: grafana
+        type: helm
+      prometheus-community:
+        url: https://prometheus-community.github.io/helm-charts
+        name: prometheus-community
+        type: helm
+      bitnami:
+        url: https://charts.bitnami.com/bitnami
+        name: bitnami
+        type: helm
+      edoburu:
+        url: https://edoburu.github.io/helm-charts
+        name: edoburu
+        type: helm
+
+  server:
+    replicas: 2
+    service:
+      type: ClusterIP
+    ingress:
+      enabled: false
+
+  dex:
+    enabled: false
+
+  redis:
+    enabled: false
+
+  redis-ha:
+    enabled: true
+    persistentVolume:
+      enabled: true
+      storageClass: longhorn
+      size: 5Gi
+    nodeSelector:
+      workload: infra
+    tolerations:
+      - key: workload
+        operator: Equal
+        value: infra
+        effect: NoSchedule
+
+  extraObjects:
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        name: argocd-http
+        namespace: argocd
+      spec:
+        parentRefs:
+          - name: traefik-gateway
+            namespace: traefik
+            sectionName: web
+        hostnames:
+          - argocd.l3s.local
+        rules:
+          - matches:
+              - path:
+                  type: PathPrefix
+                  value: /
+            backendRefs:
+              - name: argocd-server
+                port: 80
+
+    - apiVersion: gateway.networking.k8s.io/v1
+      kind: GRPCRoute
+      metadata:
+        name: argocd-grpc
+        namespace: argocd
+      spec:
+        parentRefs:
+          - name: traefik-gateway
+            namespace: traefik
+            sectionName: web
+        hostnames:
+          - argocd.l3s.local
+        rules:
+          - backendRefs:
+              - name: argocd-server
+                port: 80
+
+  controller:
+    replicas: 1
+
+  repoServer:
+    replicas: 2
+
+  applicationSet:
+    replicas: 2

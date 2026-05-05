@@ -1,0 +1,70 @@
+---
+# system-upgrade-controller Plans for k3s rolling upgrade
+#
+# Usage:
+#   1. Update `version` below to the target k3s release
+#   2. kubectl apply -f upgrade-plans.yaml
+#   3. Monitor: kubectl get plans -n system-upgrade
+#              kubectl get jobs -n system-upgrade
+#
+# The controller must be installed before applying these plans:
+#   kubectl apply -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
+#
+# Upgrade order: all servers complete first (concurrency: 1),
+# then agents start (prepare: server-plan ensures this sequencing).
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: system-upgrade
+
+---
+# Upgrades control-plane nodes one at a time
+apiVersion: upgrade.cattle.io/v1
+kind: Plan
+metadata:
+  name: server-plan
+  namespace: system-upgrade
+spec:
+  concurrency: 1
+  cordon: true
+  drain:
+    force: false
+    skipWaitForDeleteTimeout: 60
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: In
+        values:
+          - "true"
+  serviceAccountName: system-upgrade
+  upgrade:
+    image: rancher/k3s-upgrade
+  version: v1.35.4+k3s1   # <-- change this to upgrade
+
+---
+# Upgrades worker nodes after all servers are done
+apiVersion: upgrade.cattle.io/v1
+kind: Plan
+metadata:
+  name: agent-plan
+  namespace: system-upgrade
+spec:
+  concurrency: 1
+  cordon: true
+  drain:
+    force: false
+    skipWaitForDeleteTimeout: 60
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: DoesNotExist
+  prepare:
+    args:
+      - prepare
+      - server-plan
+    image: rancher/k3s-upgrade
+  serviceAccountName: system-upgrade
+  upgrade:
+    image: rancher/k3s-upgrade
+  version: v1.35.4+k3s1   # <-- must match server-plan

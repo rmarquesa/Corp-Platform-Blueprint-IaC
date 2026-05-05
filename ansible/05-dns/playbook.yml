@@ -1,0 +1,7 @@
+---
+- name: Deploy CoreDNS internal resolver
+  hosts: all
+  become: true
+  gather_facts: false
+  roles:
+    - coredns

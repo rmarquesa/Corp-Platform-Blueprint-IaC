@@ -1,0 +1,16 @@
+.:53 {
+    hosts {{ coredns_config_dir }}/hosts {
+        ttl 60
+        reload 15s
+        fallthrough
+    }
+
+    forward . {% for dns in upstream_dns %}{{ dns }}{% if not loop.last %} {% endif %}{% endfor %} {
+        policy sequential
+        health_check 5s
+    }
+
+    cache 300
+    log
+    errors
+}

@@ -1,0 +1,22 @@
+storage "raft" {
+  path    = "{{ vault_data_dir }}"
+  node_id = "vault-1"
+}
+
+listener "tcp" {
+  address     = "0.0.0.0:8200"
+  tls_disable = true  # TLS terminated at Cloudflare/Traefik
+}
+
+{% if vault_auto_unseal %}
+seal "cloudflare" {
+  account          = "{{ vault_cf_account_id }}"
+  access_key_id    = "{{ vault_cf_api_token }}"
+  kms_key_id       = "{{ vault_cf_kv_namespace_id }}"
+}
+{% endif %}
+
+api_addr     = "{{ vault_api_addr }}"
+cluster_addr = "{{ vault_cluster_addr }}"
+ui           = true
+log_level    = "info"
