@@ -2,7 +2,7 @@ coredns_version: "1.12.1"
 coredns_install_dir: /opt/coredns
 coredns_config_dir: /etc/coredns
 
-internal_domain: l3s.local
+internal_domain: proxmox.local
 internal_network: 10.10.0.0/24
 upstream_dns:
   - 1.1.1.1
@@ -13,66 +13,66 @@ dns_hosts:
   # Infrastructure
   - ip: 10.10.0.5
     names:
-      - dns.l3s.local
+      - dns.proxmox.local
 
   # Kubernetes masters
   - ip: 10.10.0.10
     names:
-      - k8s-master-1.l3s.local
+      - k8s-master-1.proxmox.local
   - ip: 10.10.0.11
     names:
-      - k8s-master-2.l3s.local
+      - k8s-master-2.proxmox.local
   - ip: 10.10.0.12
     names:
-      - k8s-master-3.l3s.local
+      - k8s-master-3.proxmox.local
 
   # Kubernetes infra workers
   - ip: 10.10.0.13
     names:
-      - k8s-infra-1.l3s.local
+      - k8s-infra-1.proxmox.local
   - ip: 10.10.0.14
     names:
-      - k8s-infra-2.l3s.local
+      - k8s-infra-2.proxmox.local
   - ip: 10.10.0.15
     names:
-      - k8s-infra-3.l3s.local
+      - k8s-infra-3.proxmox.local
 
   # Kubernetes app workers
   - ip: 10.10.0.16
     names:
-      - k8s-app-1.l3s.local
+      - k8s-app-1.proxmox.local
   - ip: 10.10.0.17
     names:
-      - k8s-app-2.l3s.local
+      - k8s-app-2.proxmox.local
 
   # PostgreSQL / Patroni
   - ip: 10.10.0.20
     names:
-      - db-1.l3s.local
+      - db-1.proxmox.local
   - ip: 10.10.0.21
     names:
-      - postgres.l3s.local     # Patroni VIP — always the primary
+      - postgres.proxmox.local     # Patroni VIP — always the primary
   - ip: 10.10.0.22
     names:
-      - db-2.l3s.local
+      - db-2.proxmox.local
   - ip: 10.10.0.23
     names:
-      - db-arbiter.l3s.local
+      - db-arbiter.proxmox.local
 
   # Harbor registry
   - ip: 10.10.0.30
     names:
-      - harbor.l3s.local
+      - harbor.proxmox.local
 
   # Vault
   - ip: 10.10.0.31
     names:
-      - vault.l3s.local
+      - vault.proxmox.local
 
   # Kubernetes services (Traefik LoadBalancer IP)
   - ip: 10.10.0.100
     names:
-      - argocd.l3s.local
-      - grafana.l3s.local
-      - keycloak.l3s.local
-      - longhorn.l3s.local
+      - argocd.proxmox.local
+      - grafana.proxmox.local
+      - keycloak.proxmox.local
+      - longhorn.proxmox.local

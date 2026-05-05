@@ -39,7 +39,7 @@ kube-prometheus-stack:
 
     grafana.ini:
       server:
-        root_url: https://grafana.l3s.local
+        root_url: https://grafana.proxmox.local
         serve_from_sub_path: false
       users:
         default_theme: dark
@@ -48,10 +48,10 @@ kube-prometheus-stack:
         viewers_can_edit: false
       auth:
         disable_login_form: false
-        signout_redirect_url: https://keycloak.l3s.local/realms/master/protocol/openid-connect/logout
+        signout_redirect_url: https://keycloak.proxmox.local/realms/master/protocol/openid-connect/logout
       auth.generic_oauth:
         enabled: true
-        name: "l3softwares SSO"
+        name: "Proxmox SSO"
         allow_sign_up: true
         client_id: grafana
         client_secret: ${GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET}
@@ -59,9 +59,9 @@ kube-prometheus-stack:
         email_attribute_path: email
         login_attribute_path: preferred_username
         name_attribute_path: name
-        auth_url: https://keycloak.l3s.local/realms/master/protocol/openid-connect/auth
-        token_url: https://keycloak.l3s.local/realms/master/protocol/openid-connect/token
-        api_url: https://keycloak.l3s.local/realms/master/protocol/openid-connect/userinfo
+        auth_url: https://keycloak.proxmox.local/realms/master/protocol/openid-connect/auth
+        token_url: https://keycloak.proxmox.local/realms/master/protocol/openid-connect/token
+        api_url: https://keycloak.proxmox.local/realms/master/protocol/openid-connect/userinfo
         role_attribute_path: "contains(roles[*], 'grafana-admin') && 'Admin' || contains(roles[*], 'grafana-editor') && 'Editor' || 'Viewer'"
         use_pkce: true
       analytics:
@@ -229,7 +229,7 @@ kube-prometheus-stack:
               namespace: traefik
               sectionName: web
           hostnames:
-            - grafana.l3s.local
+            - grafana.proxmox.local
           rules:
             - matches:
                 - path:

@@ -26,7 +26,7 @@
           [Resolve]
           DNS=10.10.0.5
           FallbackDNS=1.1.1.1
-          Domains=l3s.local
+          Domains=proxmox.local
       notify: restart resolved
 
   handlers:
@@ -48,4 +48,4 @@
         content: |
           nameserver 10.10.0.5
           nameserver 1.1.1.1
-          search l3s.local
+          search proxmox.local

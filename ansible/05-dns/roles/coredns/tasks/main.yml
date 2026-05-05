@@ -79,5 +79,5 @@
     content: |
       nameserver 127.0.0.1
       nameserver 1.1.1.1
-      search l3s.local
+      search proxmox.local
     mode: "0644"

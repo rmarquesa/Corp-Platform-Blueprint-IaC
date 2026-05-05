@@ -3,7 +3,7 @@ ansible_user: ubuntu
 harbor_version: "2.12.2"
 harbor_install_dir: /opt/harbor
 harbor_data_dir: /data/harbor
-harbor_hostname: harbor.l3s.local
+harbor_hostname: harbor.proxmox.local
 harbor_http_port: 80
 
 # External PostgreSQL (Patroni VIP)

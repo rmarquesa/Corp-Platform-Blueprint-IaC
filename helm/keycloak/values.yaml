@@ -34,7 +34,7 @@ keycloak:
     - name: KC_HOSTNAME_STRICT
       value: "false"
     - name: KC_HOSTNAME
-      value: keycloak.l3s.local
+      value: keycloak.proxmox.local
 
   proxy:
     mode: xforwarded
@@ -60,7 +60,7 @@ keycloak:
             namespace: traefik
             sectionName: web
         hostnames:
-          - keycloak.l3s.local
+          - keycloak.proxmox.local
         rules:
           - matches:
               - path:

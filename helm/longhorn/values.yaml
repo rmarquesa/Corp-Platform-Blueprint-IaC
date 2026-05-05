@@ -50,7 +50,7 @@ longhorn:
             namespace: traefik
             sectionName: web
         hostnames:
-          - longhorn.l3s.local
+          - longhorn.proxmox.local
         rules:
           - matches:
               - path:

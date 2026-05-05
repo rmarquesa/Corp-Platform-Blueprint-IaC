@@ -20,7 +20,7 @@ tunnel:
   traefikService: traefik.traefik.svc.cluster.local
 
   # Your Cloudflare domain
-  domain: l3s.local
+  domain: proxmox.local
 
   nodeSelector:
     workload: infra

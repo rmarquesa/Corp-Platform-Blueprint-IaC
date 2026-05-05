@@ -1,6 +1,6 @@
 argo-cd:
   global:
-    domain: argocd.l3s.local
+    domain: argocd.proxmox.local
     nodeSelector:
       workload: infra
     tolerations:
@@ -74,7 +74,7 @@ argo-cd:
             namespace: traefik
             sectionName: web
         hostnames:
-          - argocd.l3s.local
+          - argocd.proxmox.local
         rules:
           - matches:
               - path:
@@ -95,7 +95,7 @@ argo-cd:
             namespace: traefik
             sectionName: web
         hostnames:
-          - argocd.l3s.local
+          - argocd.proxmox.local
         rules:
           - backendRefs:
               - name: argocd-server
