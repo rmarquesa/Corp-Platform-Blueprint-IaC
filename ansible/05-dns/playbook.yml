@@ -1,7 +1,51 @@
 ---
 - name: Deploy CoreDNS internal resolver
-  hosts: all
+  hosts: dns_server
   become: true
   gather_facts: false
   roles:
     - coredns
+
+- name: Configure systemd-resolved nodes to use internal CoreDNS
+  hosts: k3s,postgres,harbor
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Ensure resolved.conf.d directory exists
+      file:
+        path: /etc/systemd/resolved.conf.d
+        state: directory
+        mode: "0755"
+
+    - name: Write systemd-resolved drop-in
+      copy:
+        dest: /etc/systemd/resolved.conf.d/internal.conf
+        mode: "0644"
+        content: |
+          [Resolve]
+          DNS=10.10.0.5
+          FallbackDNS=1.1.1.1
+          Domains=l3s.local
+      notify: restart resolved
+
+  handlers:
+    - name: restart resolved
+      systemd:
+        name: systemd-resolved
+        state: restarted
+
+- name: Configure resolv.conf on LXC containers (no systemd-resolved)
+  hosts: vault,tailscale
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Write resolv.conf directly
+      copy:
+        dest: /etc/resolv.conf
+        mode: "0644"
+        content: |
+          nameserver 10.10.0.5
+          nameserver 1.1.1.1
+          search l3s.local
