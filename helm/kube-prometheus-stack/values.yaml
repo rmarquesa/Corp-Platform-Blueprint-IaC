@@ -5,6 +5,13 @@ kube-prometheus-stack:
       enabled: false
       patch:
         enabled: false
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
 
   # --- Grafana ---
   grafana:
@@ -26,6 +33,14 @@ kube-prometheus-stack:
 
     ingress:
       enabled: false
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
 
     # Admin password + Keycloak OAuth secret injected via k8s secret
     envFrom:
@@ -251,6 +266,13 @@ kube-prometheus-stack:
           value: infra
           effect: NoSchedule
       retention: 30d
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: 2000m
+          memory: 4Gi
       storageSpec:
         volumeClaimTemplate:
           spec:
@@ -271,6 +293,13 @@ kube-prometheus-stack:
           operator: Equal
           value: infra
           effect: NoSchedule
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
       storage:
         volumeClaimTemplate:
           spec:
@@ -308,6 +337,15 @@ kube-prometheus-stack:
         operator: Exists
         effect: NoSchedule
 
+  prometheus-node-exporter:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 50Mi
+      limits:
+        cpu: 200m
+        memory: 200Mi
+
   # --- kube-state-metrics ---
   kubeStateMetrics:
     enabled: true
@@ -320,6 +358,13 @@ kube-prometheus-stack:
         operator: Equal
         value: infra
         effect: NoSchedule
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
 
   # --- Disable components not present in k3s ---
   kubeEtcd:

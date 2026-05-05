@@ -33,6 +33,14 @@ pgbouncer:
 
   existingSecret: pgbouncer-secret  # must contain: PGBOUNCER_USERLIST
 
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
   service:
     type: ClusterIP
     port: 5432

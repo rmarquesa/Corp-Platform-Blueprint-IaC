@@ -22,6 +22,14 @@ tunnel:
   # Your Cloudflare domain
   domain: proxmox.local
 
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
   nodeSelector:
     workload: infra
 

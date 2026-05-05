@@ -26,6 +26,13 @@ loki:
         operator: Equal
         value: infra
         effect: NoSchedule
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
     persistence:
       enabled: true
       storageClass: longhorn
@@ -38,6 +45,13 @@ loki:
       - key: workload
         operator: Exists
         effect: NoSchedule
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
     config:
       clients:
         - url: http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push
@@ -65,3 +79,10 @@ loki:
         operator: Equal
         value: infra
         effect: NoSchedule
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi

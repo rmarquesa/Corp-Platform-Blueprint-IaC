@@ -19,12 +19,26 @@ longhorn:
       - key: workload
         operator: Exists
         effect: NoSchedule
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
 
   longhornDriver:
     tolerations:
       - key: workload
         operator: Exists
         effect: NoSchedule
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
 
   longhornUI:
     nodeSelector:
@@ -34,6 +48,13 @@ longhorn:
         operator: Equal
         value: infra
         effect: NoSchedule
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
 
   ingress:
     enabled: false
