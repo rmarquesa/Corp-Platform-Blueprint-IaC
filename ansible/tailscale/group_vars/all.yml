@@ -1,7 +1,8 @@
 ansible_user: root
 
-# Tailscale auth key — generate a reusable key at https://login.tailscale.com/admin/settings/keys
-# Recommended: create a tag "tag:subnet-router" and use a pre-auth key with that tag
+# Tailscale auth key — generate a tagged pre-auth key at https://login.tailscale.com/admin/settings/keys
+# Tag: tag:subnet-router  (must be defined in your ACL policy with tagOwners)
+# Type: reusable, no expiry recommended for automation
 tailscale_auth_key: "{{ lookup('env', 'VAULT_TAILSCALE_AUTH_KEY') | mandatory }}"
 
 # The private network CIDR this container will advertise as a subnet router

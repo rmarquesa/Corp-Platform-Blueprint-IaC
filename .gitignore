@@ -3,7 +3,6 @@ helm/**/charts/
 .DS_Store
 .claude
 .terraform/
-.terraform.lock.hcl
 terraform.tfstate
 terraform.tfstate.backup
 terraform.tfvars

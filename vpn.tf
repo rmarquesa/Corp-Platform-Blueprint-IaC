@@ -13,9 +13,9 @@ resource "proxmox_download_file" "debian12_lxc" {
 module "tailscale" {
   source = "./modules/lxc"
 
-  name        = "tailscale"
-  node_name   = var.proxmox_node
-  vm_id       = 230
+  name      = "tailscale"
+  node_name = var.proxmox_node
+  vm_id     = 230
 
   template_file_id = proxmox_download_file.debian12_lxc.id
   os_type          = "debian"
@@ -32,7 +32,7 @@ module "tailscale" {
   network_bridge = proxmox_sdn_vnet.private.id
   ip_address     = "10.10.0.40/${var.private_cidr_prefix}"
   gateway        = var.private_gateway
-  dns_servers  = var.dns_servers
+  dns_servers    = var.dns_servers
 
   ssh_public_keys = [trimspace(file(var.ssh_public_key_path))]
   unprivileged    = true

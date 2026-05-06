@@ -1,0 +1,40 @@
+{
+  // Tailscale ACL policy for the proxmox.local homelab.
+  // Apply at: https://login.tailscale.com/admin/acls
+  //
+  // Tailscale is intentionally deployed only as the Proxmox LXC subnet router.
+  // There is no Tailscale Kubernetes Operator and no ArgoCD-managed Tailscale app.
+  //
+  // Tags used:
+  //   tag:subnet-router — the LXC that advertises 10.10.0.0/24
+
+  "tagOwners": {
+    "tag:subnet-router": ["autogroup:admin"]
+  },
+
+  "acls": [
+    // Tailnet admins can reach the Proxmox lab subnet through the subnet router.
+    {
+      "action": "accept",
+      "src": ["autogroup:admin"],
+      "dst": ["10.10.0.0/24:*", "tag:subnet-router:*"]
+    }
+  ],
+
+  "ssh": [
+    // Tailscale SSH into the subnet router only.
+    {
+      "action": "accept",
+      "src": ["autogroup:admin"],
+      "dst": ["tag:subnet-router"],
+      "users": ["autogroup:nonroot"]
+    }
+  ],
+
+  "autoApprovers": {
+    // Auto-approve the private Proxmox subnet route advertised by the LXC.
+    "routes": {
+      "10.10.0.0/24": ["tag:subnet-router"]
+    }
+  }
+}

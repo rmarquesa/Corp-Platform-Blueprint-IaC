@@ -20,7 +20,7 @@ module "dns" {
   network_bridge = proxmox_sdn_vnet.private.id
   ip_address     = "10.10.0.5/${var.private_cidr_prefix}"
   gateway        = var.private_gateway
-  dns_servers  = var.dns_servers
+  dns_servers    = var.dns_servers
 
   ssh_public_keys = [trimspace(file(var.ssh_public_key_path))]
   unprivileged    = true

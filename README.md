@@ -1,30 +1,30 @@
 # platform-blueprint
 
-A production-grade corporate infrastructure blueprint running on a single Proxmox node. Built to simulate the full platform stack a company needs to operate with resilience, security, and observability — provisioned with **Terraform**, configured with **Ansible**, and fully GitOps-managed via **ArgoCD**.
+Production-grade corporate infrastructure blueprint for a single Proxmox node. The platform is provisioned with **Terraform**, configured with **Ansible**, and operated through **ArgoCD GitOps** after a small manual bootstrap layer.
 
-> The goal is not a toy environment. Every component reflects real engineering decisions: HA databases, distributed storage, centralized identity, full observability, and zero open ports to the internet.
+> Goal: not a toy environment. The design models real platform decisions: HA control plane, HA database, distributed storage, private access, centralized identity, observability, and no direct public port forwarding.
 
 ---
 
 ## Architecture
 
-```
+```text
                         Internet
                            │
                     Cloudflare DNS
                            │
-                   Cloudflare Tunnel        Tailscale VPN
-                   (cloudflared pod)     (LXC — private access)
-                           │                    │
-                    ┌──────▼────────────────────▼──────┐
-                    │     Traefik (Gateway API v1)      │
-                    │     ClusterIP — infra workers     │
-                    └──┬───────┬──────────┬─────────────┘
-                       │       │          │
-                   ArgoCD  Keycloak   Grafana / Longhorn UI
+                   Cloudflare Tunnel              Tailscale VPN
+                   (cloudflared pod)              (LXC subnet router)
+                           │                           │
+                    ┌──────▼───────────────────────────▼──────┐
+                    │      Traefik (Gateway API v1)            │
+                    │      ClusterIP / LoadBalancer on k3s      │
+                    └──┬──────────┬────────────┬───────────────┘
+                       │          │            │
+                    ArgoCD     Keycloak     Grafana / Longhorn UI
                        │
            ┌───────────▼──────────────────────────────┐
-           │           k3s HA Cluster                  │
+           │             k3s HA Cluster                │
            │                                           │
            │  Masters ×3        control-plane only     │
            │  kube-vip VIP      10.10.0.100            │
@@ -38,14 +38,13 @@ A production-grade corporate infrastructure blueprint running on a single Proxmo
            └───────────────────────────────────────────┘
                            │
            ┌───────────────▼───────────────────────────┐
-           │        External Services                   │
+           │          External / LXC Services           │
            │                                           │
-           │  PostgreSQL HA  Patroni + etcd            │
-           │  primary · replica · etcd arbiter         │
-           │  floating VIP via vip-manager             │
-           │                                           │
-           │  Harbor    Container registry             │
-           │  Vault     Secrets management             │
+           │  CoreDNS       internal DNS               │
+           │  PostgreSQL HA Patroni + etcd             │
+           │  Harbor        container registry          │
+           │  Vault         secrets management          │
+           │  Tailscale     subnet router only          │
            └───────────────────────────────────────────┘
 ```
 
@@ -53,163 +52,134 @@ A production-grade corporate infrastructure blueprint running on a single Proxmo
 
 ## Design Principles
 
-**No single points of failure** — k3s control-plane runs on 3 masters with kube-vip providing a stable API VIP. PostgreSQL uses Patroni with etcd for automatic failover. Longhorn replicates volumes across infra workers.
-
-**Workload segregation** — infra tooling (Traefik, ArgoCD, monitoring, Longhorn) runs exclusively on infra workers via taints and node selectors. Application workloads run on separate app workers with no scheduling conflict.
-
-**GitOps-first** — no `kubectl apply` in production after bootstrap. All application state lives in Git. ArgoCD reconciles continuously with sync waves to enforce dependency ordering.
-
-**Zero open ports** — all public traffic enters via Cloudflare Tunnel (no firewall rules, no exposed IPs). Private access uses Tailscale subnet routing.
-
-**Identity-first** — Keycloak provides SSO across all internal services. Grafana, ArgoCD, and Longhorn authenticate via OIDC. No local user databases per service.
+- **No single points of failure where practical** — k3s has 3 masters behind kube-vip. PostgreSQL runs as Patroni/etcd across 3 DB VMs. Longhorn replicates volumes across infra workers.
+- **Workload segregation** — platform tooling runs on tainted infra workers; application workloads run on app workers.
+- **GitOps-first after bootstrap** — Traefik, Longhorn, and ArgoCD are bootstrapped manually as the recovery layer; the rest of the Kubernetes stack is reconciled by ArgoCD.
+- **Zero open router ports** — public access uses Cloudflare Tunnel; private access uses a dedicated Tailscale LXC advertising `10.10.0.0/24`.
+- **No Tailscale in Kubernetes** — Tailscale is intentionally **not** installed through ArgoCD and there is no Tailscale Kubernetes Operator in this design.
+- **Identity-first** — Keycloak provides OIDC/SSO for internal services.
 
 ---
 
 ## Stack
 
 ### Provisioning & Configuration
+
 | Tool | Purpose |
 |---|---|
-| Proxmox VE 8.x | Hypervisor — VMs and LXC containers |
-| Terraform + bpg/proxmox ~> 0.70 | Infrastructure as Code — VM/LXC lifecycle, SDN, cloud-init |
-| Ansible | OS-level configuration, cluster bootstrap, service installation |
+| Proxmox VE 8.x | Hypervisor for VMs/LXCs |
+| Terraform + bpg/proxmox | VM/LXC/SDN lifecycle |
+| Ansible | OS-level configuration and service bootstrap |
+| Helm | Kubernetes package rendering/install |
+| ArgoCD | GitOps reconciliation after bootstrap |
 
 ### Kubernetes Platform
+
 | Component | Version | Purpose |
-|---|---|---|
+|---|---:|---|
 | k3s | v1.35.4+k3s1 | Kubernetes distribution |
-| kube-vip | latest | Control-plane HA VIP + LoadBalancer |
-| Traefik | 39.0.9 | Ingress controller, Gateway API v1 |
-| Longhorn | 1.7.2 | Distributed block storage with replication |
+| kube-vip | latest | API VIP + LoadBalancer pool |
+| Traefik | 39.0.9 | Ingress controller / Gateway API v1 |
+| Longhorn | 1.7.2 | Distributed block storage |
 | ArgoCD | 9.5.11 | GitOps continuous delivery |
 
 ### Observability
+
 | Component | Version | Purpose |
-|---|---|---|
-| kube-prometheus-stack | 70.4.2 | Metrics — Prometheus + Grafana + Alertmanager |
+|---|---:|---|
+| kube-prometheus-stack | 70.4.2 | Prometheus, Grafana, Alertmanager |
 | Loki | 6.29.0 | Log aggregation |
 | Tempo | 1.14.1 | Distributed tracing |
 
-Grafana is pre-configured with 11 dashboards across 7 folders (Kubernetes, GitOps, Ingress, Storage, Database, Identity, Observability) and full Loki↔Tempo correlation.
+### Identity, Data & Access
 
-### Identity & Security
 | Component | Version | Purpose |
-|---|---|---|
-| Keycloak | bitnami 24.4.13 | SSO / OIDC identity provider |
-| HashiCorp Vault | latest | Secrets management (Raft storage) |
-
-### Data Layer
-| Component | Version | Purpose |
-|---|---|---|
-| PostgreSQL 17 | — | Primary database (HA via Patroni + etcd) |
-| PgBouncer | 1.2.7 | Connection pooler |
-| Redis HA | bitnami 21.2.7 | Cache with Sentinel |
-
-### Networking & Access
-| Component | Version | Purpose |
-|---|---|---|
-| cloudflared | 2025.4.0 | Cloudflare Tunnel — zero-trust public access |
-| Tailscale | — | VPN subnet router — private access |
-
-### Registry
-| Component | Purpose |
-|---|---|
-| Harbor | Private container registry with RBAC and vulnerability scanning |
+|---|---:|---|
+| Keycloak | 7.1.11 chart | SSO / OIDC identity provider |
+| PostgreSQL | 17 | HA database via Patroni + etcd |
+| PgBouncer | 1.1.0 chart | Connection pooling |
+| Redis HA | 21.2.7 chart | Cache with Sentinel |
+| Harbor | — | Private container registry |
+| Vault | — | Secrets management |
+| CoreDNS | 1.12.1 | Internal DNS for `proxmox.local` |
+| cloudflared | 2025.4.0 | Cloudflare Tunnel |
+| Tailscale | — | LXC subnet router only |
 
 ---
 
 ## Infrastructure Layout
 
 ### Virtual Machines
+
 | Name | ID | IP | Spec | Role |
-|---|---|---|---|---|
-| k8s-master-1/2/3 | 201–203 | 10.10.0.10–12 | 2vCPU / 4 GB | k3s control-plane |
-| k8s-infra-1/2/3 | 204–206 | 10.10.0.13–15 | 4vCPU / 8 GB | Infra workers |
-| k8s-app-1/2 | 207–208 | 10.10.0.16–17 | 2vCPU / 4 GB | App workers |
-| db-1 | 210 | 10.10.0.20 | 2vCPU / 4 GB | PostgreSQL primary |
-| db-2 | 211 | 10.10.0.22 | 2vCPU / 4 GB | PostgreSQL replica |
-| db-arbiter | 212 | 10.10.0.23 | 1vCPU / 512 MB | etcd arbiter |
-| harbor | 220 | 10.10.0.30 | 4vCPU / 8 GB | Container registry |
+|---|---:|---|---|---|
+| k8s-master-1 | 201 | 10.10.0.10 | 2 vCPU / 4 GB | k3s control-plane |
+| k8s-master-2 | 202 | 10.10.0.11 | 2 vCPU / 4 GB | k3s control-plane |
+| k8s-master-3 | 203 | 10.10.0.12 | 2 vCPU / 4 GB | k3s control-plane |
+| k8s-infra-1 | 204 | 10.10.0.13 | 4 vCPU / 8 GB | infra worker |
+| k8s-infra-2 | 205 | 10.10.0.14 | 4 vCPU / 8 GB | infra worker |
+| k8s-infra-3 | 206 | 10.10.0.15 | 4 vCPU / 8 GB | infra worker |
+| k8s-app-1 | 207 | 10.10.0.16 | 2 vCPU / 4 GB | app worker |
+| k8s-app-2 | 208 | 10.10.0.17 | 2 vCPU / 4 GB | app worker |
+| db-1 | 210 | 10.10.0.20 | 2 vCPU / 4 GB | PostgreSQL / Patroni |
+| db-2 | 211 | 10.10.0.22 | 2 vCPU / 4 GB | PostgreSQL / Patroni |
+| db-3 | 213 | 10.10.0.24 | 2 vCPU / 4 GB | PostgreSQL / Patroni no-failover/no-sync |
+| harbor | 220 | 10.10.0.30 | 4 vCPU / 8 GB | container registry |
 
 ### LXC Containers
+
 | Name | ID | IP | Role |
-|---|---|---|---|
-| vault | 221 | 10.10.0.31 | Secrets management |
-| tailscale | 230 | 10.10.0.40 | VPN subnet router |
+|---|---:|---|---|
+| dns | 200 | 10.10.0.5 | CoreDNS internal resolver |
+| vault | 221 | 10.10.0.31 | Vault secrets management |
+| tailscale | 230 | 10.10.0.40 | Tailscale subnet router for `10.10.0.0/24` |
 
 ### Virtual IPs
+
 | VIP | Purpose |
 |---|---|
-| 10.10.0.21 | PostgreSQL primary (Patroni + vip-manager) |
-| 10.10.0.100 | k3s API server (kube-vip) |
-| 10.10.0.200–250 | LoadBalancer pool (kube-vip cloud controller) |
-
----
-
-## Network
-
-All nodes run on a Proxmox SDN isolated network (`10.10.0.0/24`). SNAT provides outbound internet access via the host.
-
-**Public traffic** — Cloudflare Tunnel connects the `cloudflared` pod to Cloudflare's edge. TLS terminates at Cloudflare. No ports are forwarded on the router.
-
-**Private traffic** — The Tailscale LXC advertises `10.10.0.0/24` as a subnet route. Any device on the Tailscale network reaches all internal services directly.
+| 10.10.0.21 | PostgreSQL primary via Patroni + vip-manager |
+| 10.10.0.100 | k3s API server via kube-vip |
+| 10.10.0.200–250 | kube-vip LoadBalancer pool |
 
 ---
 
 ## Repository Structure
 
-```
+```text
 .
-├── main.tf                     # Provider + backend configuration
-├── variables.tf                # Input variables
-├── secrets.sh.example          # Environment variables template
-├── network.tf                  # SDN zone, vnet, SNAT
-├── template.tf                 # Ubuntu 24.04 cloud image + vendor-data
-├── k8s-masters.tf              # k3s master VMs
-├── k8s-workers-infra.tf        # Infra worker VMs
-├── k8s-workers-app.tf          # App worker VMs
-├── database.tf                 # PostgreSQL HA VMs
-├── registry.tf                 # Harbor VM
-├── vault.tf                    # Vault LXC
-├── vpn.tf                      # Tailscale LXC
-│
+├── *.tf                         # Terraform root modules for Proxmox resources
 ├── modules/
-│   ├── vm/                     # VM module — cloud-init, disk, network
-│   └── lxc/                    # LXC module — nesting, TUN device
-│
+│   ├── vm/                      # VM module
+│   └── lxc/                     # LXC module
 ├── ansible/
-│   ├── 01-prepare_vms/         # Pre-flight: QEMU agent via Proxmox host
-│   ├── 02-k3s/                 # k3s HA bootstrap, kube-vip, node labels
-│   ├── 03-postgres/            # Patroni + etcd + vip-manager
-│   ├── harbor/                 # Docker + Harbor installer
-│   ├── vault/                  # Vault + Raft storage
-│   └── tailscale/              # Tailscale subnet router
-│
-├── helm/
-│   ├── traefik/                # Traefik v3 + Gateway API
-│   ├── longhorn/               # Distributed storage
-│   ├── argocd/                 # ArgoCD HA
-│   ├── kube-prometheus-stack/  # Prometheus + Grafana + Alertmanager
-│   ├── loki/                   # Log aggregation
-│   ├── tempo/                  # Distributed tracing
-│   ├── keycloak/               # Identity provider
-│   ├── pgbouncer/              # Connection pooler
-│   ├── redis/                  # Redis HA
-│   └── cloudflared/            # Cloudflare Tunnel
-│
-└── argocd/
-    └── apps/                   # App-of-Apps manifests with sync waves
+│   ├── 01-prepare_vms/          # QEMU guest agent prep through Proxmox host
+│   ├── 02-k3s/                  # k3s HA bootstrap, kube-vip, labels/taints
+│   ├── 03-postgres/             # PostgreSQL 17 + Patroni + etcd + vip-manager
+│   ├── 04-harbor/               # Docker + Harbor installer
+│   ├── 05-dns/                  # CoreDNS internal DNS
+│   ├── tailscale/               # Tailscale LXC subnet router
+│   └── vault/                   # Vault + Raft storage
+├── helm/                        # Local wrapper charts and values
+├── argocd/apps/                 # App-of-Apps manifests with sync waves
+├── docs/
+│   └── tailscale-acl.hujson     # Tailscale ACL for LXC-only subnet router
+└── scripts/
+    ├── shutdown.sh              # Graceful Proxmox guest shutdown order
+    └── validate.sh              # Local validation suite
 ```
 
 ---
 
 ## Prerequisites
 
-- Proxmox VE 8.x node
-- Terraform ≥ 1.3 and Ansible ≥ 2.15 installed locally
-- An SSH key pair for VM access
-- A domain managed by Cloudflare
-- A Tailscale account
+- Proxmox VE 8.x node.
+- Terraform >= 1.3.
+- Ansible >= 2.15.
+- Helm and kubectl.
+- SSH key pair for VM/LXC access.
+- Domain managed by Cloudflare.
+- Tailscale account.
 
 ---
 
@@ -219,9 +189,11 @@ All nodes run on a Proxmox SDN isolated network (`10.10.0.0/24`). SNAT provides 
 
 ```bash
 cp secrets.sh.example secrets.sh
-# Fill in all tokens and passwords
+# Fill in all tokens/passwords, then:
 source secrets.sh
 ```
+
+`secrets.sh`, `terraform.tfvars`, and Terraform state files are intentionally ignored by Git.
 
 ### 2. Provision infrastructure
 
@@ -230,56 +202,70 @@ terraform init
 terraform apply -parallelism=2
 ```
 
-Creates the SDN network, downloads the Ubuntu 24.04 cloud image, and provisions all VMs and LXC containers.
+This creates the Proxmox SDN network, downloads templates, and provisions all VMs/LXCs.
 
-### 3. Pre-flight VM preparation
-
-Enables the QEMU guest agent on every VM via the Proxmox host. Idempotent.
+### 3. Prepare VMs
 
 ```bash
 cd ansible
 ansible-playbook 01-prepare_vms/playbook.yml -i 01-prepare_vms/inventory/hosts.yml
 ```
 
-### 4. k3s cluster
+### 4. Bootstrap k3s
 
 ```bash
-ansible-playbook 02-k3s/site.yml
+ansible-playbook 02-k3s/site.yml -i 02-k3s/inventory/hosts.yml
 ```
 
-Bootstraps the first master, joins remaining masters via kube-vip VIP (`10.10.0.100`), deploys kube-vip manifests, joins all workers, and applies node labels and taints.
+This bootstraps the first server, joins the other servers/workers, deploys kube-vip, and applies labels/taints.
 
-### 5. PostgreSQL HA
+### 5. Configure PostgreSQL HA
 
 ```bash
 ansible-playbook 03-postgres/playbook.yml -i 03-postgres/inventory/hosts.yml
 ```
 
-Installs etcd on all three DB nodes, installs PostgreSQL 17, configures Patroni, and sets up vip-manager for the floating VIP at `10.10.0.21`.
+Installs etcd on all DB nodes, installs PostgreSQL 17, configures Patroni, and manages the `10.10.0.21` floating VIP.
 
-### 6. Harbor
+### 6. Configure CoreDNS
 
 ```bash
-ansible-playbook harbor/playbook.yml -i harbor/inventory/hosts.yml
+ansible-playbook 05-dns/playbook.yml -i 05-dns/inventory/hosts.yml
 ```
 
-### 7. Vault
+CoreDNS serves `proxmox.local` names and points platform service hostnames at the Traefik/kube-vip frontend.
+
+### 7. Configure Harbor
+
+```bash
+ansible-playbook 04-harbor/playbook.yml -i 04-harbor/inventory/hosts.yml
+```
+
+### 8. Configure Vault
 
 ```bash
 ansible-playbook vault/playbook.yml -i vault/inventory/hosts.yml
-# Retrieve /root/vault-init.json from the Vault LXC and store the unseal keys securely
+# Retrieve /root/vault-init.json from the Vault LXC and store unseal keys securely.
 ```
 
-### 8. Tailscale
+### 9. Configure Tailscale LXC subnet router
+
+Tailscale is deployed only in the LXC at `10.10.0.40`. Do not add a Tailscale Operator or ArgoCD app unless the architecture intentionally changes.
+
+1. Apply `docs/tailscale-acl.hujson` in the Tailscale ACL editor.
+2. Generate a tagged pre-auth key for `tag:subnet-router`.
+3. Export it as `VAULT_TAILSCALE_AUTH_KEY`.
+4. Run:
 
 ```bash
 ansible-playbook tailscale/site.yml -i tailscale/inventory/hosts.yml
-# Approve the subnet route 10.10.0.0/24 in the Tailscale admin console
 ```
 
-### 9. Platform bootstrap (manual, run once)
+The ACL auto-approves route `10.10.0.0/24` for `tag:subnet-router`; otherwise approve the subnet route manually in the Tailscale admin console.
 
-Traefik and ArgoCD are installed manually — they are the recovery layer. If ArgoCD breaks, Traefik is still serving and you can access the ArgoCD UI to fix it.
+### 10. Platform bootstrap: manual recovery layer
+
+Traefik, Longhorn, and ArgoCD are installed manually. They are the recovery layer: if ArgoCD breaks, Traefik/ArgoCD access remains independently recoverable.
 
 ```bash
 # Gateway API CRDs
@@ -303,7 +289,7 @@ helm upgrade --install longhorn helm/longhorn/ \
 
 # ArgoCD
 ARGO_PWD="<password>"
-ARGO_HASH=$(htpasswd -nbBC 10 "" $ARGO_PWD | tr -d ':\n' | sed 's/$2y/$2a/')
+ARGO_HASH=$(htpasswd -nbBC 10 "" "$ARGO_PWD" | tr -d ':\n' | sed 's/$2y/$2a/')
 helm repo add argo https://argoproj.github.io/argo-helm && helm repo update
 helm dependency build helm/argocd/
 helm upgrade --install argocd helm/argocd/ \
@@ -313,20 +299,33 @@ helm upgrade --install argocd helm/argocd/ \
   --wait --timeout 5m
 ```
 
-### 10. GitOps takes over
+### 11. GitOps takes over
 
 ```bash
 kubectl apply -f argocd/apps/root.yaml
 ```
 
-ArgoCD syncs the remaining stack in waves:
+ArgoCD syncs the remaining stack:
 
 | Wave | Apps |
-|---|---|
-| 0 | Longhorn |
+|---:|---|
 | 1 | kube-prometheus-stack, Loki, Tempo |
 | 2 | Keycloak, PgBouncer, Redis |
 | 3 | cloudflared |
+
+Longhorn is installed in the manual bootstrap step and is not currently part of `argocd/apps`.
+
+---
+
+## Validation
+
+Run the local validation suite before committing or applying changes:
+
+```bash
+scripts/validate.sh
+```
+
+It checks Terraform formatting/validation, Helm chart linting, Ansible syntax, YAML parsing for non-template files, and optional secret scanning with gitleaks when available.
 
 ---
 
@@ -335,31 +334,31 @@ ArgoCD syncs the remaining stack in waves:
 | Pool | Taint | Runs |
 |---|---|---|
 | Masters | `node-role.kubernetes.io/control-plane:NoSchedule` | k3s control plane only |
-| Infra workers | `workload=infra:NoSchedule` | All platform tooling |
-| App workers | — | User workloads |
+| Infra workers | `workload=infra:NoSchedule` | platform tooling |
+| App workers | — | user workloads |
 
-DaemonSets (node-exporter, Longhorn manager, Promtail) use `operator: Exists` to run on all nodes regardless of taint value.
+DaemonSets such as node-exporter, Longhorn manager, and Promtail use `operator: Exists` tolerations where they must run on all nodes.
 
 ---
 
 ## Secrets
 
-All credentials are injected at runtime via environment variables. No secrets are committed to the repository.
+All credentials are injected at runtime via environment variables or Kubernetes Secrets. Do not commit real credentials.
 
-The intended production flow:
+Intended steady-state flow:
 
-```
+```text
 Vault ──► External Secrets Operator ──► Kubernetes Secrets
 ```
+
+Until that flow is complete, bootstrap-only secrets may be created manually or sourced from `secrets.sh` locally.
 
 ---
 
 ## Maintenance
 
-**Upgrade a Helm chart** — edit `version` in `helm/<chart>/Chart.yaml`, commit, ArgoCD syncs automatically.
-
-**Upgrade k3s** — update `version` in `ansible/02-k3s/manifests/upgrade-plans.yaml`, apply with `kubectl apply -f`. The system-upgrade-controller handles the rolling upgrade.
-
-**Add an application** — create `helm/<app>/` with `Chart.yaml` + `values.yaml`, add an ArgoCD Application in `argocd/apps/`, push.
-
-**Scale workers** — edit the node map in `k8s-workers-app.tf` or `k8s-workers-infra.tf`, run `terraform apply`, re-run the k3s playbook.
+- **Upgrade a Helm chart** — edit dependency `version` in `helm/<chart>/Chart.yaml`, run `helm dependency update helm/<chart>/`, validate, commit, and let ArgoCD sync.
+- **Upgrade k3s** — update `ansible/02-k3s/manifests/upgrade-plans.yaml` and apply the plan through the system-upgrade-controller flow.
+- **Add an application** — create `helm/<app>/`, add an `argocd/apps/<app>.yaml`, validate, then push.
+- **Scale workers** — edit `k8s-workers-app.tf` or `k8s-workers-infra.tf`, run `terraform apply`, then re-run the k3s playbook.
+- **Tailscale changes** — update only the LXC Ansible role and `docs/tailscale-acl.hujson`; do not add Tailscale to ArgoCD in the current architecture.

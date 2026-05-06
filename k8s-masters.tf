@@ -26,7 +26,7 @@ module "k8s" {
   network_bridge = proxmox_sdn_vnet.private.id
   ip_address     = "${each.value.ip}/${var.private_cidr_prefix}"
   gateway        = var.private_gateway
-  dns_servers  = var.dns_servers
+  dns_servers    = var.dns_servers
 
   ssh_public_keys     = [trimspace(file(var.ssh_public_key_path))]
   vendor_data_file_id = proxmox_virtual_environment_file.vendor_data.id

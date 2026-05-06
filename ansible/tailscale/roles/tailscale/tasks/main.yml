@@ -47,7 +47,23 @@
     sysctl_set: yes
     reload: yes
 
-- name: Connect to Tailscale and advertise subnet route
+- name: Check Tailscale backend state
+  command: tailscale status --json
+  register: ts_status_raw
+  failed_when: false
+  changed_when: false
+
+- name: Parse Tailscale backend state
+  set_fact:
+    ts_backend: "{{ (ts_status_raw.stdout | from_json).BackendState | default('NeedsLogin') }}"
+  when: ts_status_raw.rc == 0 and ts_status_raw.stdout | length > 0
+
+- name: Set backend to NeedsLogin when tailscaled is unreachable
+  set_fact:
+    ts_backend: "NeedsLogin"
+  when: ts_status_raw.rc != 0 or ts_status_raw.stdout | length == 0
+
+- name: Authenticate and connect Tailscale
   shell: >
     tailscale up
     --authkey="{{ tailscale_auth_key }}"
@@ -55,8 +71,17 @@
     --accept-routes
     --hostname="{{ tailscale_hostname }}"
     --ssh
-  args:
-    creates: /var/lib/tailscale/tailscaled.state
+  when: ts_backend != "Running"
+
+- name: Refresh Tailscale flags (already authenticated)
+  shell: >
+    tailscale up
+    --advertise-routes="{{ tailscale_subnet }}"
+    --accept-routes
+    --hostname="{{ tailscale_hostname }}"
+    --ssh
+  when: ts_backend == "Running"
+  changed_when: false
 
 - name: Check Tailscale status
   command: tailscale status
