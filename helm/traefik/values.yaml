@@ -20,7 +20,11 @@ traefik:
       memory: 512Mi
 
   service:
-    type: ClusterIP  # only reachable inside cluster by cloudflared
+    type: LoadBalancer
+    spec:
+      # First IP from kube-vip LoadBalancer pool (10.10.0.200-10.10.0.250).
+      # Internal DNS points platform HTTP hostnames at this address for Tailscale access.
+      loadBalancerIP: 10.10.0.200
 
   ingressClass:
     enabled: true

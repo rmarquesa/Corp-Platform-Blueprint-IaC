@@ -14,16 +14,3 @@
     log
     errors
 }
-
-# postgres.proxmox.local — served from etcd, updated by Patroni on failover
-postgres.proxmox.local:53 {
-    etcd {
-        path /coredns
-        endpoint {% for ep in coredns_etcd_endpoints %}{{ ep }}{% if not loop.last %} {% endif %}{% endfor %}
-
-        fallthrough
-    }
-    cache 5
-    log
-    errors
-}

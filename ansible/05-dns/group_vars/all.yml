@@ -8,7 +8,8 @@ upstream_dns:
   - 1.1.1.1
   - 8.8.8.8
 
-# etcd endpoints for CoreDNS dynamic postgres record
+# PostgreSQL floating VIP is published statically as postgres.proxmox.local in CoreDNS.
+# Keep etcd endpoints here only if dynamic DNS records are reintroduced later.
 coredns_etcd_endpoints:
   - http://10.10.0.20:2379
   - http://10.10.0.22:2379
@@ -51,7 +52,20 @@ dns_hosts:
     names:
       - k8s-app-2.proxmox.local
 
-  # PostgreSQL / Patroni
+  # Kubernetes API VIP (kube-vip control-plane address)
+  - ip: 10.10.0.100
+    names:
+      - k8s-api.proxmox.local
+
+  # Kubernetes HTTP services exposed by Traefik LoadBalancer
+  - ip: 10.10.0.200
+    names:
+      - argocd.proxmox.local
+      - grafana.proxmox.local
+      - keycloak.proxmox.local
+      - longhorn.proxmox.local
+
+  # PostgreSQL / Patroni nodes and floating VIP
   - ip: 10.10.0.20
     names:
       - db-1.proxmox.local
@@ -61,6 +75,10 @@ dns_hosts:
   - ip: 10.10.0.24
     names:
       - db-3.proxmox.local
+  - ip: 10.10.0.21
+    names:
+      - postgres.proxmox.local
+      - postgres-vip.proxmox.local
 
   # Harbor registry
   - ip: 10.10.0.30
@@ -71,11 +89,3 @@ dns_hosts:
   - ip: 10.10.0.31
     names:
       - vault.proxmox.local
-
-  # Kubernetes services (Traefik LoadBalancer IP)
-  - ip: 10.10.0.100
-    names:
-      - argocd.proxmox.local
-      - grafana.proxmox.local
-      - keycloak.proxmox.local
-      - longhorn.proxmox.local

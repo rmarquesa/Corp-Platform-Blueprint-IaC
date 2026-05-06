@@ -30,6 +30,51 @@
     name: tailscaled
     enabled: true
     state: started
+    daemon_reload: true
+
+- name: Check TUN device inside the container
+  stat:
+    path: /dev/net/tun
+  register: tailscale_tun_device
+
+- name: Fail when TUN device is missing
+  fail:
+    msg: >-
+      /dev/net/tun is missing inside the tailscale LXC. On the Proxmox host, ensure
+      /etc/pve/lxc/230.conf contains 'lxc.cgroup2.devices.allow: c 10:200 rwm' and
+      'lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file', then reboot
+      the LXC with 'pct reboot 230'.
+  when: not tailscale_tun_device.stat.exists
+
+- name: Wait for tailscaled to become active
+  command: systemctl is-active tailscaled
+  register: tailscaled_active
+  retries: 10
+  delay: 2
+  until: tailscaled_active.rc == 0
+  changed_when: false
+  failed_when: false
+
+- name: Collect tailscaled diagnostics when inactive
+  shell: |
+    set -o pipefail
+    systemctl status tailscaled --no-pager || true
+    journalctl -u tailscaled -n 80 --no-pager || true
+  args:
+    executable: /bin/bash
+  register: tailscaled_diagnostics
+  changed_when: false
+  when: tailscaled_active.rc != 0
+
+- name: Show tailscaled diagnostics when inactive
+  debug:
+    msg: "{{ tailscaled_diagnostics.stdout_lines }}"
+  when: tailscaled_active.rc != 0
+
+- name: Fail when tailscaled did not become active
+  fail:
+    msg: "tailscaled did not become active; see diagnostics above."
+  when: tailscaled_active.rc != 0
 
 - name: Enable IP forwarding (IPv4)
   sysctl:
