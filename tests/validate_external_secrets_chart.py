@@ -40,7 +40,7 @@ def main() -> None:
         "installCRDs: true",
         "vault:",
         "server: http://vault.proxmox.local",
-        "path: secret",
+        "path: kv",
         "version: v2",
         "mountPath: kubernetes",
         "role: external-secrets",

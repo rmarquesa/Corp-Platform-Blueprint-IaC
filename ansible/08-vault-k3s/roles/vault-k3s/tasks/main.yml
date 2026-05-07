@@ -1,0 +1,232 @@
+---
+# Validate Vault is reachable and unsealed
+- name: Check Vault health
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/health"
+    method: GET
+    status_code: [200, 429, 472, 473]
+    return_content: true
+  register: vault_health
+
+- name: Fail if Vault is sealed or unreachable
+  ansible.builtin.fail:
+    msg: "Vault is sealed or in an unexpected state: {{ vault_health.json }}"
+  when: vault_health.json.sealed | default(true) | bool
+
+# Preflight: confirm we can talk to the cluster and that the target
+# serviceaccount exists. These tasks intentionally produce visible output
+# on failure so misconfigurations surface before the (no_log) token call.
+- name: Verify external-secrets serviceaccount exists
+  ansible.builtin.command:
+    cmd: kubectl -n {{ vault_k8s_namespace }} get serviceaccount {{ vault_k8s_service_account }}
+  environment:
+    KUBECONFIG: "{{ kubeconfig | expanduser }}"
+  register: sa_check
+  changed_when: false
+  failed_when: sa_check.rc != 0
+  when: vault_kubernetes_token_reviewer_jwt is not defined or vault_kubernetes_token_reviewer_jwt == ''
+
+- name: Verify permission to create tokens for external-secrets serviceaccount
+  ansible.builtin.command:
+    cmd: kubectl auth can-i create serviceaccounts/token -n {{ vault_k8s_namespace }}
+  environment:
+    KUBECONFIG: "{{ kubeconfig | expanduser }}"
+  register: can_i_check
+  changed_when: false
+  failed_when: "'yes' not in can_i_check.stdout"
+  when: vault_kubernetes_token_reviewer_jwt is not defined or vault_kubernetes_token_reviewer_jwt == ''
+
+# Generate TokenReviewer JWT if not provided
+- name: Generate Kubernetes TokenReviewer JWT
+  ansible.builtin.command:
+    cmd: kubectl -n {{ vault_k8s_namespace }} create token {{ vault_k8s_service_account }} --duration=8760h
+  environment:
+    KUBECONFIG: "{{ kubeconfig | expanduser }}"
+  register: k8s_token_reviewer_jwt_result
+  when: vault_kubernetes_token_reviewer_jwt is not defined or vault_kubernetes_token_reviewer_jwt == ''
+  changed_when: true
+  no_log: true
+
+- name: Set TokenReviewer JWT fact
+  ansible.builtin.set_fact:
+    _vault_token_reviewer_jwt: "{{ vault_kubernetes_token_reviewer_jwt | default(k8s_token_reviewer_jwt_result.stdout | default('')) }}"
+  no_log: true
+
+# Read Kubernetes CA cert from the active kubeconfig context if not provided.
+# --minify ensures we only see the cluster bound to the current context, so
+# .clusters[0] is unambiguous when kubeconfigs merge multiple clusters.
+- name: Read Kubernetes CA cert from kubeconfig
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - config
+      - view
+      - --minify
+      - --raw
+      - -o
+      - jsonpath={.clusters[0].cluster.certificate-authority-data}
+  environment:
+    KUBECONFIG: "{{ kubeconfig | expanduser }}"
+  register: k8s_ca_b64_result
+  when: vault_kubernetes_ca_cert is not defined or vault_kubernetes_ca_cert == ''
+  changed_when: false
+  no_log: true
+
+- name: Set Kubernetes CA cert fact from kubeconfig
+  ansible.builtin.set_fact:
+    _vault_k8s_ca_cert: "{{ k8s_ca_b64_result.stdout | b64decode }}"
+  when:
+    - vault_kubernetes_ca_cert is not defined or vault_kubernetes_ca_cert == ''
+    - k8s_ca_b64_result.stdout is defined
+    - k8s_ca_b64_result.stdout | length > 0
+  no_log: true
+
+# Fallback: if kubeconfig has no inline certificate-authority-data (e.g. it
+# points to a local CA file or the field is empty), fetch the cluster CA from
+# the kube-root-ca.crt ConfigMap that every namespace publishes. This avoids
+# Vault falling back to /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+# which only exists inside a pod.
+- name: Read Kubernetes CA cert from kube-root-ca.crt ConfigMap
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - -n
+      - "{{ vault_k8s_namespace }}"
+      - get
+      - configmap
+      - kube-root-ca.crt
+      - -o
+      - jsonpath={.data.ca\.crt}
+  environment:
+    KUBECONFIG: "{{ kubeconfig | expanduser }}"
+  register: k8s_ca_configmap_result
+  when:
+    - vault_kubernetes_ca_cert is not defined or vault_kubernetes_ca_cert == ''
+    - (k8s_ca_b64_result.stdout | default('')) | length == 0
+  changed_when: false
+  no_log: true
+
+- name: Set Kubernetes CA cert fact from kube-root-ca.crt ConfigMap
+  ansible.builtin.set_fact:
+    _vault_k8s_ca_cert: "{{ k8s_ca_configmap_result.stdout }}"
+  when:
+    - vault_kubernetes_ca_cert is not defined or vault_kubernetes_ca_cert == ''
+    - k8s_ca_configmap_result is defined
+    - k8s_ca_configmap_result.stdout is defined
+    - k8s_ca_configmap_result.stdout | length > 0
+  no_log: true
+
+- name: Use provided Kubernetes CA cert
+  ansible.builtin.set_fact:
+    _vault_k8s_ca_cert: "{{ vault_kubernetes_ca_cert }}"
+  when: vault_kubernetes_ca_cert is defined and vault_kubernetes_ca_cert != ''
+  no_log: true
+
+# Abort with a visible, non-secret error before configuring Vault. Without this
+# guard Vault would silently fall back to the in-cluster CA path and fail with
+# 'open /var/run/secrets/kubernetes.io/serviceaccount/ca.crt: no such file or
+# directory' on first auth attempt.
+- name: Fail if Kubernetes CA cert is empty
+  ansible.builtin.fail:
+    msg: >-
+      Kubernetes CA cert could not be resolved. Neither the active kubeconfig
+      context (certificate-authority-data) nor the kube-root-ca.crt ConfigMap
+      in namespace '{{ vault_k8s_namespace }}' returned a usable CA. Provide
+      the CA explicitly via -e vault_kubernetes_ca_cert='...' or fix the
+      kubeconfig before re-running.
+  when: _vault_k8s_ca_cert is not defined or _vault_k8s_ca_cert | length == 0
+
+# Enable Kubernetes auth mount (idempotent)
+- name: Check if Kubernetes auth mount exists
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/auth"
+    method: GET
+    headers:
+      X-Vault-Token: "{{ vault_token }}"
+    status_code: 200
+    return_content: true
+  register: vault_auth_mounts
+  no_log: true
+
+- name: Enable Kubernetes auth method
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/auth/{{ vault_k8s_auth_mount }}"
+    method: POST
+    headers:
+      X-Vault-Token: "{{ vault_token }}"
+    body_format: json
+    body:
+      type: "kubernetes"
+    status_code: [200, 204]
+  when: (vault_k8s_auth_mount + '/') not in (vault_auth_mounts.json | default({}))
+  no_log: true
+
+# Configure the Kubernetes auth mount
+- name: Configure Kubernetes auth mount
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/auth/{{ vault_k8s_auth_mount }}/config"
+    method: POST
+    headers:
+      X-Vault-Token: "{{ vault_token }}"
+    body_format: json
+    body:
+      kubernetes_host: "{{ vault_k8s_host }}"
+      kubernetes_ca_cert: "{{ _vault_k8s_ca_cert }}"
+      token_reviewer_jwt: "{{ _vault_token_reviewer_jwt }}"
+      disable_iss_validation: "{{ vault_k8s_disable_iss_validation }}"
+    status_code: [200, 204]
+  register: vault_k8s_config_result
+  failed_when: false
+  no_log: true
+
+- name: Fail on Configure Kubernetes auth mount error
+  ansible.builtin.fail:
+    msg: "Vault API call failed. status={{ vault_k8s_config_result.status | default('N/A') }} msg={{ vault_k8s_config_result.msg | default('') }} errors={{ vault_k8s_config_result.json.errors | default([]) }}"
+  when: vault_k8s_config_result.status is defined and vault_k8s_config_result.status not in [200, 204]
+
+# Write policy
+- name: Render kubernetes-platform-read policy
+  ansible.builtin.set_fact:
+    _vault_policy_content: "{{ lookup('template', 'kubernetes-platform-read.hcl.j2') }}"
+
+- name: Write Vault policy kubernetes-platform-read
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/policies/acl/{{ vault_policy_name }}"
+    method: PUT
+    headers:
+      X-Vault-Token: "{{ vault_token }}"
+    body_format: json
+    body:
+      policy: "{{ _vault_policy_content }}"
+    status_code: [200, 204]
+  register: vault_policy_result
+  failed_when: false
+  no_log: true
+
+- name: Fail on Write Vault policy error
+  ansible.builtin.fail:
+    msg: "Vault API call failed. status={{ vault_policy_result.status | default('N/A') }} msg={{ vault_policy_result.msg | default('') }} errors={{ vault_policy_result.json.errors | default([]) }}"
+  when: vault_policy_result.status is defined and vault_policy_result.status not in [200, 204]
+
+# Create/update the role
+- name: Create Vault Kubernetes auth role
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/auth/{{ vault_k8s_auth_mount }}/role/{{ vault_k8s_auth_role }}"
+    method: POST
+    headers:
+      X-Vault-Token: "{{ vault_token }}"
+    body_format: json
+    body:
+      bound_service_account_names: "{{ vault_k8s_service_account }}"
+      bound_service_account_namespaces: "{{ vault_k8s_namespace }}"
+      policies: "{{ vault_policy_name }}"
+      ttl: "{{ vault_k8s_token_ttl }}"
+    status_code: [200, 204]
+  register: vault_role_result
+  failed_when: false
+  no_log: true
+
+- name: Fail on Create Vault Kubernetes auth role error
+  ansible.builtin.fail:
+    msg: "Vault API call failed. status={{ vault_role_result.status | default('N/A') }} msg={{ vault_role_result.msg | default('') }} errors={{ vault_role_result.json.errors | default([]) }}"
+  when: vault_role_result.status is defined and vault_role_result.status not in [200, 204]

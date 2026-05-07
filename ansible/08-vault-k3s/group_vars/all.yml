@@ -1,0 +1,29 @@
+# Vault connection
+vault_addr: "http://vault.proxmox.local"
+# vault_token: supplied at runtime via -e vault_token=... or VAULT_TOKEN env
+
+# Kubeconfig path used by all kubectl invocations. Honors KUBECONFIG env when
+# set, otherwise falls back to the local k3s admin kubeconfig.
+kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default('~/.kube/k3s-proxmox.yaml', true) }}"
+
+# Kubernetes auth mount configuration
+vault_k8s_auth_mount: "kubernetes"
+# Vault validates the API server TLS certificate during TokenReview. The
+# kubeconfig hostname k8s-api.proxmox.local relies on insecure-skip-tls-verify
+# and is not valid for Vault's TLS verification; use the kube-vip IP with a
+# certificate SAN that validates against the cluster CA.
+vault_k8s_host: "https://10.10.0.100:6443"
+vault_k8s_auth_role: "external-secrets"
+vault_k8s_service_account: "external-secrets"
+vault_k8s_namespace: "external-secrets"
+vault_k8s_token_ttl: "1h"
+vault_policy_name: "kubernetes-platform-read"
+vault_k8s_disable_iss_validation: true
+
+# Token reviewer JWT: override at runtime with -e vault_kubernetes_token_reviewer_jwt=...
+# If not set, will be generated via: kubectl -n external-secrets create token external-secrets --duration=8760h
+# vault_kubernetes_token_reviewer_jwt: ""
+
+# Kubernetes CA: override at runtime with -e vault_kubernetes_ca_cert=...
+# If not set, will be read from kubeconfig
+# vault_kubernetes_ca_cert: ""

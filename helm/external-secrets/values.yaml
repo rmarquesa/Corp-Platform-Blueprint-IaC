@@ -16,7 +16,7 @@ vault:
   # Vault server reachable from the cluster.
   server: http://vault.proxmox.local
   # KV secrets engine mount path.
-  path: secret
+  path: kv
   # KV engine version (v2 supports versioning + soft delete).
   version: v2
   kubernetesAuth:

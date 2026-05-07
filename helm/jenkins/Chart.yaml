@@ -1,0 +1,11 @@
+apiVersion: v2
+name: jenkins
+description: Jenkins As Code wrapper chart with JCasC, Kubernetes agents, Vault and ExternalSecrets integration
+type: application
+version: 1.0.0
+
+dependencies:
+  - name: jenkins
+    alias: jenkins
+    version: "5.9.18"
+    repository: https://charts.jenkins.io

@@ -1,0 +1,278 @@
+# Wrapper chart values for Jenkins (JCasC-driven, Kubernetes agents, Vault).
+#
+# All admin credentials, Git credentials and Vault AppRole secrets are
+# materialised through ExternalSecrets (see templates/external-secret-*.yaml).
+# No real secrets are ever committed to this file.
+#
+# Upstream chart: https://charts.jenkins.io (jenkins 5.9.18)
+# Values below are passed through under the `jenkins:` key matching the
+# dependency alias declared in Chart.yaml.
+
+# ---------------------------------------------------------------------------
+# ExternalSecrets toggle for this wrapper chart's templates.
+# When true, three ExternalSecret manifests are rendered, all pointing to the
+# cluster-wide ClusterSecretStore named `vault` provisioned by external-secrets.
+# ---------------------------------------------------------------------------
+externalSecrets:
+  enabled: true
+  # ClusterSecretStore name (already exists in the cluster).
+  clusterSecretStore: vault
+  # Vault KV v2 paths (relative to the `kv/` mount configured in ClusterSecretStore/vault).
+  paths:
+    admin: jenkins/admin
+    git: jenkins/git
+    vaultApprole: jenkins/vault-approle
+  # Refresh interval for ESO reconciliation.
+  refreshInterval: 1h
+
+# ---------------------------------------------------------------------------
+# Upstream Jenkins chart values, namespaced under the dependency alias.
+# ---------------------------------------------------------------------------
+jenkins:
+  # Controller (formerly "master") configuration.
+  controller:
+    # Public hostname used by the Ingress and JCasC URL settings.
+    jenkinsUrl: "http://jenkins.proxmox.local"
+    jenkinsUriPrefix: ""
+
+    # Resources for the controller pod.
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "512Mi"
+      limits:
+        cpu: "1000m"
+        memory: "2Gi"
+
+    # We supply the admin credential via an ExternalSecret. The upstream chart
+    # consumes it through controller.admin.existingSecret and exposes the values
+    # to JCasC as ${chart-admin-username} and ${chart-admin-password}.
+    admin:
+      createSecret: true
+      existingSecret: "jenkins-admin-secret"
+      userKey: jenkins-admin-user
+      passwordKey: jenkins-admin-password
+
+    # Additional ExternalSecret-backed Kubernetes Secrets mounted for JCasC
+    # interpolation from /run/secrets/additional.
+    additionalExistingSecrets:
+      - name: jenkins-git-credentials
+        keyName: git-username
+      - name: jenkins-git-credentials
+        keyName: git-password
+      - name: jenkins-vault-approle
+        keyName: vault-role-id
+      - name: jenkins-vault-approle
+        keyName: vault-secret-id
+
+    # Ingress (Traefik). TLS disabled for internal cluster access.
+    ingress:
+      enabled: true
+      apiVersion: "networking.k8s.io/v1"
+      ingressClassName: "traefik"
+      hostName: "jenkins.proxmox.local"
+      tls: []
+      annotations: {}
+
+    # Plugins pinned for reproducibility. Versions are compatible with the
+    # upstream chart appVersion 2.555.1; avoid implicit latest plugin upgrades.
+    installPlugins:
+      - kubernetes:4423.vb_59f230b_ce53
+      - workflow-aggregator:608.v67378e9d3db_1
+      - git:5.10.1
+      - configuration-as-code:2077.v41f1011a_5110
+      - job-dsl:3654.vdf58f53e2d15
+      - hashicorp-vault-plugin:379.v080d932e61e4
+      - credentials:1502.v5c95e620ddfe
+      - credentials-binding:720.v3f6decef43ea_
+      - pipeline-stage-view:2.41
+      - matrix-auth:3.2.10
+      - role-strategy:848.va_a_ea_673cf0b_c
+
+    # Disable the additional plugin fetch on every restart for reproducibility.
+    installLatestPlugins: false
+    installLatestSpecifiedPlugins: false
+
+    # ----------------------------------------------------------------------
+    # JCasC: configuration-as-code scripts. Map format `name -> |-` block.
+    # Values referenced via ${VAR} are resolved from environment variables
+    # injected by the existingSecret (see existingSecret above) plus the
+    # standard JCasC variable interpolation.
+    # ----------------------------------------------------------------------
+    JCasC:
+      defaultConfig: true
+      configScripts:
+        welcome-message: |
+          jenkins:
+            systemMessage: "Jenkins :: Proxmox Platform"
+
+        security: |
+          jenkins:
+            securityRealm:
+              local:
+                allowsSignup: false
+                enableCaptcha: false
+                users:
+                  - id: "${chart-admin-username}"
+                    password: "${chart-admin-password}"
+            authorizationStrategy:
+              globalMatrix:
+                permissions:
+                  - "Overall/Administer:${chart-admin-username}"
+                  - "Overall/Read:anonymous"
+                  - "Job/Read:anonymous"
+                  - "View/Read:anonymous"
+            remotingSecurity:
+              enabled: true
+
+        credentials: |
+          credentials:
+            system:
+              domainCredentials:
+                - credentials:
+                    - usernamePassword:
+                        scope: GLOBAL
+                        id: "git-credentials"
+                        description: "Git credentials sourced from Vault via ExternalSecrets"
+                        username: "${jenkins-git-credentials-git-username}"
+                        password: "${jenkins-git-credentials-git-password}"
+                    - vaultAppRoleCredential:
+                        scope: GLOBAL
+                        id: "vault-approle-placeholder"
+                        description: "Vault AppRole credential placeholder"
+                        path: "approle"
+                        roleId: "${jenkins-vault-approle-vault-role-id}"
+                        secretId: "${jenkins-vault-approle-vault-secret-id}"
+
+        vault-config: |
+          unclassified:
+            hashicorpVault:
+              configuration:
+                vaultUrl: "http://vault.proxmox.local"
+                vaultCredentialId: "vault-approle-placeholder"
+                engineVersion: 2
+
+        seed-job: |
+          jobs:
+            - script: >
+                pipelineJob('seed-job') {
+                  description('Seed job that loads pipeline definitions from the platform Job DSL repository.')
+                  definition {
+                    cps {
+                      sandbox(true)
+                      script("""
+                        pipeline {
+                          agent any
+                          stages {
+                            stage('Checkout DSL') {
+                              steps {
+                                git url: 'https://git.proxmox.local/platform/jenkins-jobs.git', credentialsId: 'git-credentials'
+                              }
+                            }
+                            stage('Apply DSL') {
+                              steps {
+                                jobDsl targets: 'jobs/**/*.groovy', removedJobAction: 'DELETE', removedViewAction: 'DELETE'
+                              }
+                            }
+                          }
+                        }
+                      """.stripIndent())
+                    }
+                  }
+                }
+
+    # ----------------------------------------------------------------------
+    # initScripts: Groovy executed on controller boot, BEFORE JCasC runs.
+    # Used here for hardening that has no JCasC equivalent.
+    # ----------------------------------------------------------------------
+    initScripts:
+      00-hardening: |
+        import jenkins.model.Jenkins
+        import jenkins.security.s2m.AdminWhitelistRule
+        import hudson.diagnosis.OldDataMonitor
+        import hudson.security.csrf.DefaultCrumbIssuer
+
+        def jenkins = Jenkins.instance
+
+        // Disable CLI-over-Remoting (legacy attack surface).
+        jenkins.descriptor("jenkins.CLI").get().setEnabled(false)
+
+        // No quiet period for triggered builds.
+        jenkins.setQuietPeriod(0)
+
+        // Disable the OldData monitor noise.
+        def oldData = jenkins.getAdministrativeMonitor(OldDataMonitor.class.name)
+        if (oldData != null) {
+          oldData.disable(true)
+        }
+
+        // Enforce CSRF protection.
+        if (jenkins.getCrumbIssuer() == null) {
+          jenkins.setCrumbIssuer(new DefaultCrumbIssuer(true))
+        }
+
+        // Lock down agent <-> controller communications.
+        jenkins.injector.getInstance(AdminWhitelistRule.class)
+          .setMasterKillSwitch(false)
+
+        jenkins.save()
+
+  # ----------------------------------------------------------------------
+  # Persistence for ${JENKINS_HOME}.
+  # ----------------------------------------------------------------------
+  persistence:
+    enabled: true
+    storageClass: longhorn
+    size: "10Gi"
+
+  # ----------------------------------------------------------------------
+  # Agents (ephemeral Kubernetes pods via the kubernetes plugin).
+  # ----------------------------------------------------------------------
+  agent:
+    enabled: true
+    namespace: "jenkins"
+    connectTimeout: 100
+    containerCap: 10
+    defaultsProviderTemplate: ""
+    image:
+      repository: "jenkins/inbound-agent"
+      tag: "latest"
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "512Mi"
+      limits:
+        cpu: "1000m"
+        memory: "1Gi"
+    podTemplates:
+      default: |
+        - name: default
+          label: default
+          serviceAccount: default
+          containers:
+            - name: jnlp
+              image: jenkins/inbound-agent:latest
+              resourceRequestCpu: "200m"
+              resourceRequestMemory: "512Mi"
+              resourceLimitCpu: "1000m"
+              resourceLimitMemory: "1Gi"
+            - name: kaniko
+              image: gcr.io/kaniko-project/executor:latest
+              command: "/busybox/cat"
+              ttyEnabled: true
+              resourceRequestCpu: "200m"
+              resourceRequestMemory: "512Mi"
+              resourceLimitCpu: "1000m"
+              resourceLimitMemory: "1Gi"
+
+  # Place the release into the `jenkins` namespace via Helm `--namespace`.
+  # The chart itself does not create the namespace; ArgoCD or the operator
+  # invoking `helm upgrade --install` is responsible.
+  rbac:
+    create: true
+  serviceAccount:
+    create: true
+    name: jenkins
+  serviceAccountAgent:
+    create: true
+    name: jenkins-agent

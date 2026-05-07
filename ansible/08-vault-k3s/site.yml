@@ -1,0 +1,20 @@
+---
+- name: Configure Vault Kubernetes auth for k3s
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  pre_tasks:
+    - name: Resolve Vault token from env if not provided
+      ansible.builtin.set_fact:
+        vault_token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+      when: vault_token is not defined or vault_token == ''
+      no_log: true
+
+    - name: Fail if vault_token is not set
+      ansible.builtin.fail:
+        msg: "vault_token must be provided via -e vault_token=... or VAULT_TOKEN environment variable"
+      when: vault_token is not defined or vault_token == ''
+
+  roles:
+    - vault-k3s

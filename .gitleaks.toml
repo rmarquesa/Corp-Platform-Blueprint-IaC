@@ -7,3 +7,8 @@ paths = [
   "secrets.sh.example",
   "terraform.tfvars.example",
 ]
+regexes = [
+  # Jenkins plugin coordinate, not a secret. Gitleaks generic-api-key flags the
+  # pinned credentials-binding plugin version suffix as high-entropy material.
+  '''720\.v3f6decef43ea_''',
+]

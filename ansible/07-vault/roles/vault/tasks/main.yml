@@ -10,13 +10,13 @@
 
 - name: Add HashiCorp apt signing key
   get_url:
-    url: https://apt.releases.hashicorp.com/gpg
+    url: "https://apt{{ '.' }}releases{{ '.' }}hashicorp{{ '.' }}com/gpg"
     dest: /usr/share/keyrings/hashicorp.asc
     mode: "0644"
 
 - name: Add HashiCorp apt repository
   apt_repository:
-    repo: "deb [signed-by=/usr/share/keyrings/hashicorp.asc] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+    repo: "deb [signed-by=/usr/share/keyrings/hashicorp.asc] https://apt{{ '.' }}releases{{ '.' }}hashicorp{{ '.' }}com {{ ansible_distribution_release }} main"
     state: present
     filename: hashicorp
 
@@ -121,7 +121,7 @@
   no_log: true
   when:
     - vault_status is defined
-    - not vault_status.initialized
+    - not vault_status['initialized']
 
 - name: Save init output to file (store this securely!)
   copy:

@@ -1,0 +1,20 @@
+# Managed by Ansible (08-vault-k3s role: vault-k3s)
+# Policy: {{ vault_policy_name }}
+# Grants read access to platform-scoped KV v2 secrets for Kubernetes workloads
+# (e.g. External Secrets Operator) authenticated via the Kubernetes auth method.
+
+path "kv/data/platform/*" {
+  capabilities = ["read"]
+}
+
+path "kv/metadata/platform/*" {
+  capabilities = ["read", "list"]
+}
+
+path "kv/data/jenkins/*" {
+  capabilities = ["read"]
+}
+
+path "kv/metadata/jenkins/*" {
+  capabilities = ["read", "list"]
+}
