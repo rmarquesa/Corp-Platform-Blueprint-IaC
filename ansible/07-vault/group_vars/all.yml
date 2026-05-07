@@ -6,6 +6,9 @@ vault_config_dir: /etc/vault.d
 vault_api_addr: "http://10.10.0.31:8200"
 vault_cluster_addr: "http://10.10.0.31:8201"
 
+# Disable mlock: required on LXC where mlock is not permitted in unprivileged containers
+vault_disable_mlock: true
+
 # Auto-unseal via Cloudflare Workers KV
 # Set vault_auto_unseal: false to use manual unseal
 vault_auto_unseal: false

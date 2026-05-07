@@ -1,63 +1,91 @@
-pgbouncer:
-  replicaCount: 2
+replicaCount: 2
 
-  config:
-    databases:
-      # Wildcard: all databases forwarded to Patroni primary via DNS failover endpoint
-      "*":
-        host: postgres.proxmox.local
-        port: 5432
+image:
+  repository: ghcr.io/rmarquesa/pgbouncer
+  tag: "1.24.0-alpine3.22"
+  pullPolicy: IfNotPresent
 
-    pgbouncer:
-      listen_port: 5432
-      listen_addr: "*"
-      auth_type: scram-sha-256
-      auth_file: /etc/pgbouncer/userlist.txt
-      # pgBouncer fetches user hashes from Postgres — no need to sync all passwords
-      auth_user: pgbouncer
-      auth_query: "SELECT username, password FROM pgbouncer.get_auth($1)"
-      pool_mode: transaction
-      max_client_conn: 200
-      default_pool_size: 20
-      min_pool_size: 5
-      reserve_pool_size: 5
-      reserve_pool_timeout: 3
-      server_idle_timeout: 600
-      server_connect_timeout: 5
-      server_login_retry: 3
-      client_idle_timeout: 0
-      log_connections: 0
-      log_disconnections: 0
-      log_pooler_errors: 1
-      # No TLS internally — traffic stays on private 10.10.0.0/24
-      server_tls_sslmode: disable
+imagePullSecrets: []
 
-  # Secret provisioned by Vault agent injector — contains userlist.txt with:
-  #   "pgbouncer" "SCRAM-SHA-256$<hash>"
-  # All other users resolved dynamically via auth_query against pg_shadow
-  userListSecretName: pgbouncer-userlist
+serviceAccount:
+  create: true
+  name: ""
 
-  service:
-    type: ClusterIP
-    port: 5432
+config:
+  databases:
+    "*":
+      host: postgres.proxmox.local
+      port: 5432
 
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 500m
-      memory: 128Mi
+  pgbouncer:
+    listen_port: 5432
+    listen_addr: "*"
+    auth_type: scram-sha-256
+    auth_file: /etc/pgbouncer/userlist.txt
+    auth_user: pgbouncer
+    auth_query: "SELECT username, password FROM pgbouncer.get_auth($1)"
+    pool_mode: transaction
+    max_client_conn: 200
+    default_pool_size: 20
+    min_pool_size: 5
+    reserve_pool_size: 5
+    reserve_pool_timeout: 3
+    server_idle_timeout: 600
+    server_connect_timeout: 5
+    server_login_retry: 3
+    client_idle_timeout: 0
+    log_connections: 0
+    log_disconnections: 0
+    log_pooler_errors: 1
+    server_tls_sslmode: disable
 
-  nodeSelector:
-    workload: infra
+# Secrets policy:
+# Real userlist.txt MUST be provisioned out-of-band (e.g. Vault agent injector,
+# external-secrets, sealed-secrets) and referenced via existingSecret.
+# createPlaceholder=false (default) means no Secret is rendered by this chart.
+# Setting createPlaceholder=true emits a clearly-fake placeholder Secret only
+# so a fresh cluster can boot before the real Secret is materialized; pgBouncer
+# will reject real auth attempts until the real Secret replaces it.
+userList:
+  existingSecret: pgbouncer-userlist
+  createPlaceholder: false
 
-  tolerations:
-    - key: workload
-      operator: Equal
-      value: infra
-      effect: NoSchedule
+service:
+  type: ClusterIP
+  port: 5432
 
-  podDisruptionBudget:
-    enabled: true
-    minAvailable: 1
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 128Mi
+
+nodeSelector:
+  workload: infra
+
+tolerations:
+  - key: workload
+    operator: Equal
+    value: infra
+    effect: NoSchedule
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1100
+  runAsGroup: 1100
+  fsGroup: 1100
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pgbouncer.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "pgbouncer.labels" . | nindent 4 }}
+data:
+  pgbouncer.ini: |
+    [databases]
+    {{- range $db, $cfg := .Values.config.databases }}
+    {{ $db }} = {{- range $k, $v := $cfg }} {{ $k }}={{ $v }}{{- end }}
+    {{- end }}
+
+    [pgbouncer]
+    auth_query = {{ .Values.config.pgbouncer.auth_query | quote }}
+    pool_mode = {{ .Values.config.pgbouncer.pool_mode }}
+    {{- range $k, $v := omit .Values.config.pgbouncer "auth_query" "pool_mode" }}
+    {{ $k }} = {{ $v }}
+    {{- end }}

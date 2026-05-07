@@ -42,6 +42,7 @@
     group: vault
     mode: "0640"
   notify: restart vault
+  no_log: true
 
 - name: Enable and start Vault
   systemd:
@@ -67,6 +68,7 @@
   environment:
     VAULT_ADDR: "{{ vault_api_addr }}"
   register: vault_init
+  no_log: true
   when:
     - vault_status is defined
     - not vault_status.initialized
@@ -78,6 +80,7 @@
     owner: root
     group: root
     mode: "0400"
+  no_log: true
   when: vault_init is not skipped and vault_init.stdout is defined
 
 - name: Print init reminder
