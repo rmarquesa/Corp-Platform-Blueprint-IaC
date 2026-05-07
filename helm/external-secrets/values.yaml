@@ -1,0 +1,34 @@
+# Wrapper chart values for External Secrets Operator + HashiCorp Vault.
+#
+# No static Vault credentials live here. Authentication is performed via the
+# Kubernetes auth method using the in-cluster ServiceAccount token, which Vault
+# validates through the Kubernetes TokenReview API. The optional ClusterRoleBinding
+# (createTokenReviewBinding) wires `system:auth-delegator` so Vault can call
+# TokenReview against the cluster.
+
+# Upstream External Secrets Operator chart values.
+# https://charts.external-secrets.io
+external-secrets:
+  installCRDs: true
+
+# Defaults for the platform's Vault integration.
+vault:
+  # Vault server reachable from the cluster.
+  server: http://vault.proxmox.local
+  # KV secrets engine mount path.
+  path: secret
+  # KV engine version (v2 supports versioning + soft delete).
+  version: v2
+  kubernetesAuth:
+    # Vault auth/<mountPath> — must match the Vault Kubernetes auth backend.
+    mountPath: kubernetes
+    # Vault role bound to this Kubernetes ServiceAccount.
+    role: external-secrets
+
+# ServiceAccount used by the ClusterSecretStore to authenticate to Vault.
+# Provisioned by the upstream external-secrets chart.
+serviceAccountName: external-secrets
+
+# When true, render a ClusterRoleBinding granting `system:auth-delegator` to
+# the External Secrets ServiceAccount so Vault's TokenReview calls succeed.
+createTokenReviewBinding: true

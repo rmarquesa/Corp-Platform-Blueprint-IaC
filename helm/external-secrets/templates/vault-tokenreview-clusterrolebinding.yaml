@@ -1,0 +1,18 @@
+{{- if .Values.createTokenReviewBinding }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: external-secrets-vault-tokenreview
+  labels:
+    app.kubernetes.io/name: external-secrets
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccountName }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

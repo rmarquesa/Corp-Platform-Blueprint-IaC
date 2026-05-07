@@ -44,11 +44,61 @@
   notify: restart vault
   no_log: true
 
+- name: Flush Vault handlers before local-only validation
+  meta: flush_handlers
+
 - name: Enable and start Vault
   systemd:
     name: vault
     enabled: true
     state: started
+
+- name: Install nginx for Vault reverse proxy
+  apt:
+    name: nginx
+    state: present
+    update_cache: true
+  when: vault_nginx_enabled | bool
+
+- name: Deploy nginx site for Vault
+  template:
+    src: nginx-vault.conf.j2
+    dest: /etc/nginx/sites-available/vault.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: vault_nginx_enabled | bool
+  notify: restart nginx
+
+- name: Disable default nginx site
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  when: vault_nginx_enabled | bool
+  notify: restart nginx
+
+- name: Enable Vault nginx site
+  file:
+    src: /etc/nginx/sites-available/vault.conf
+    dest: /etc/nginx/sites-enabled/vault.conf
+    state: link
+  when: vault_nginx_enabled | bool
+  notify: restart nginx
+
+- name: Validate nginx configuration
+  command: nginx -t
+  changed_when: false
+  when: vault_nginx_enabled | bool
+
+- name: Enable and start nginx
+  systemd:
+    name: nginx
+    enabled: true
+    state: started
+  when: vault_nginx_enabled | bool
+
+- name: Flush nginx handlers before Vault status checks
+  meta: flush_handlers
 
 - name: Check if Vault is initialized
   command: vault status -format=json

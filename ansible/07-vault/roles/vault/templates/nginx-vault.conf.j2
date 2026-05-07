@@ -1,0 +1,22 @@
+server {
+    listen {{ vault_nginx_listen_port }};
+    server_name {{ vault_nginx_server_name }};
+
+    location / {
+        proxy_pass {{ vault_nginx_proxy_pass }};
+
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Vault-Request   true;
+
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        "upgrade";
+
+        proxy_buffering off;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+    }
+}

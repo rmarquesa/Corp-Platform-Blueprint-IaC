@@ -4,8 +4,8 @@ storage "raft" {
 }
 
 listener "tcp" {
-  address     = "0.0.0.0:8200"
-  tls_disable = true  # TLS terminated at Cloudflare/Traefik
+  address     = "{{ vault_listener_address }}"
+  tls_disable = true  # TLS terminated at local nginx reverse proxy
 }
 
 {% if vault_auto_unseal %}

@@ -3,7 +3,8 @@ ansible_user: root
 vault_version: "1.19.2"
 vault_data_dir: /opt/vault/data
 vault_config_dir: /etc/vault.d
-vault_api_addr: "http://10.10.0.31:8200"
+vault_listener_address: "127.0.0.1:8200"
+vault_api_addr: "http://vault.proxmox.local"
 vault_cluster_addr: "http://10.10.0.31:8201"
 
 # Disable mlock: required on LXC where mlock is not permitted in unprivileged containers
@@ -17,3 +18,9 @@ vault_auto_unseal: false
 # vault_cf_account_id: ""
 # vault_cf_api_token: ""
 # vault_cf_kv_namespace_id: ""
+
+# Local nginx reverse proxy so http://vault.proxmox.local/ works without :8200
+vault_nginx_enabled: true
+vault_nginx_server_name: vault.proxmox.local
+vault_nginx_listen_port: 80
+vault_nginx_proxy_pass: http://127.0.0.1:8200
