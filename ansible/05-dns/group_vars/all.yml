@@ -62,6 +62,7 @@ dns_hosts:
     names:
       - argocd.proxmox.local
       - grafana.proxmox.local
+      - jenkins.proxmox.local
       - keycloak.proxmox.local
       - longhorn.proxmox.local
 

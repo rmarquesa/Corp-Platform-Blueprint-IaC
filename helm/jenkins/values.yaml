@@ -35,6 +35,68 @@ jenkins:
     jenkinsUrl: "http://jenkins.proxmox.local"
     jenkinsUriPrefix: ""
 
+    # Enforce Jenkins UI Content-Security-Policy at JVM level. This keeps CSP
+    # controlled by Helm and prevents disabling/changing it through the UI.
+    javaOpts: >-
+      -Djenkins.security.csp.CspHeader.headerName=Content-Security-Policy
+      -Djenkins.security.csp.CspHeader.value="sandbox; default-src 'none';
+      img-src 'self' data:; style-src 'self' 'unsafe-inline';
+      script-src 'self' 'unsafe-inline' 'unsafe-eval';
+      font-src 'self'; connect-src 'self'; form-action 'self';"
+
+    # -- Number of replicas. Max 1. Can be set to 0 for maintenance scenarios.
+    replicas: 1
+
+    # StatefulSet update strategy — RollingUpdate replaces the pod in place.
+    updateStrategy:
+      type: RollingUpdate
+
+    # Expose the admin credentials as env vars so the preStop hook can
+    # authenticate against the secured Jenkins API.
+    containerEnv:
+      - name: JENKINS_ADMIN_USER
+        valueFrom:
+          secretKeyRef:
+            name: jenkins-admin-secret
+            key: jenkins-admin-user
+      - name: JENKINS_ADMIN_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: jenkins-admin-secret
+            key: jenkins-admin-password
+
+    # Safe-restart on helm upgrade:
+    #   1. Obtain a CSRF crumb (required by DefaultCrumbIssuer).
+    #   2. PUT Jenkins into quiet mode so no new builds are accepted.
+    #   3. Poll every 10 s until every executor (local + one-off pipeline) is idle.
+    # terminationGracePeriodSeconds gives the outer deadline (1 h).
+    # Without authentication the curl returns a 403, grep matches nothing,
+    # wc -l returns 0, and the pod terminates instantly — hence the fix.
+    terminationGracePeriodSeconds: 3600
+    lifecycle:
+      preStop:
+        exec:
+          command:
+            - sh
+            - -c
+            - |
+              AUTH="${JENKINS_ADMIN_USER}:${JENKINS_ADMIN_PASSWORD}"
+              BASE="http://localhost:8080"
+              CRUMB=$(curl -sf -u "${AUTH}" "${BASE}/crumbIssuer/api/json" \
+                | grep -o '"crumb":"[^"]*"' | cut -d'"' -f4)
+              curl -sf -X POST -u "${AUTH}" -H "Jenkins-Crumb: ${CRUMB}" \
+                "${BASE}/quietDown" || true
+              until [ "$(curl -sf -u "${AUTH}" \
+                "${BASE}/computer/api/json?tree=computer[executors[idle],oneOffExecutors[idle]]" \
+                | grep -o '"idle":false' | wc -l)" = "0" ]; do
+                sleep 10
+              done
+
+    # PDB disabled: with replicas: 1, minAvailable: 1 blocks every node drain.
+    # Graceful shutdown is handled by terminationGracePeriodSeconds above.
+    podDisruptionBudget:
+      enabled: false
+
     # Resources for the controller pod.
     resources:
       requests:
@@ -74,148 +136,96 @@ jenkins:
       tls: []
       annotations: {}
 
-    # Plugins pinned for reproducibility. Versions are compatible with the
-    # upstream chart appVersion 2.555.1; avoid implicit latest plugin upgrades.
+    # Primary plugins — only the ones explicitly chosen for this platform.
+    # Transitive dependencies are resolved automatically by the plugin manager
+    # at install time; there is no need to list them here.
+    # To regenerate a fully-pinned closure (e.g. after a Jenkins upgrade):
+    #   java -jar jenkins-plugin-manager.jar --war jenkins.war \
+    #     --plugin-file <(helm template . | grep '^\s*-' | ...) --output yaml
     installPlugins:
-      - kubernetes:4423.vb_59f230b_ce53
-      - workflow-aggregator:608.v67378e9d3db_1
-      - git:5.10.1
+      # gitleaks:disable
+      # --- Configuration & Security ---
+      - antisamy-markup-formatter:173.v680e3a_b_69ff3
       - configuration-as-code:2077.v41f1011a_5110
-      - job-dsl:3654.vdf58f53e2d15
-      - hashicorp-vault-plugin:379.v080d932e61e4
       - credentials:1502.v5c95e620ddfe
       - credentials-binding:720.v3f6decef43ea_
-      - pipeline-stage-view:2.41
       - matrix-auth:3.2.10
       - role-strategy:848.va_a_ea_673cf0b_c
+      - script-security:1402.v94c9ce464861
+      - ssh-credentials:372.va_250881b_08cd
 
-    # Disable the additional plugin fetch on every restart for reproducibility.
+      # --- Source Control ---
+      - git:5.10.1
+      - github:1.46.0.1
+
+      # --- Pipelines ---
+      - pipeline-model-definition:2.2277.v00573e73ddf1
+      - pipeline-rest-api:2.41
+      - pipeline-stage-view:2.41
+      - workflow-aggregator:608.v67378e9d3db_1
+      - workflow-multibranch:821.vc3b_4ea_780798
+      - job-dsl:3654.vdf58f53e2d15
+
+      # --- Kubernetes Agents ---
+      - kubernetes:4423.vb_59f230b_ce53
+      - kubernetes-credentials:207.v492f58828b_ed
+      - docker-plugin:1316.v75635a_002b_0a_
+
+      # --- Integrations ---
+      - hashicorp-vault-plugin:379.v080d932e61e4
+      - sonar:2.18.2
+      - snyk-security-scanner:5.0.1
+
+      # --- Notifications & UI ---
+      - email-ext:1933.v45cec755423f
+      - mailer:534.v1b_36f5864073
+      - junit:1403.vd9d1413fd205
+      - favorite:2.263.v941d21defef7
+      - matrix-project:870.v9db_fcfc2f45b_
+
+      # gitleaks:enable
+
+    # installLatestPlugins: false  → respects the :version pins in installPlugins.
+    #   The plugin manager compares checksums against what is already on the PVC;
+    #   it only downloads a plugin if the pinned version differs from what is
+    #   installed. This keeps restarts fast (~30 s JVM + JCasC vs 3-5 min with
+    #   installLatestPlugins: true which re-downloads everything on every start).
+    #
+    # To update a plugin: bump its version in installPlugins and run helm upgrade.
+    # Transitive dependencies are resolved to the minimum compatible version.
     installLatestPlugins: false
     installLatestSpecifiedPlugins: false
+    overwritePlugins: true
+
+    # Resources for the config-reload sidecar (required by ResourceQuota).
+    # The chart nests this under controller.sidecars.configAutoReload.
+    sidecars:
+      configAutoReload:
+        enabled: true
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "100m"
+            memory: "128Mi"
 
     # ----------------------------------------------------------------------
-    # JCasC: configuration-as-code scripts. Map format `name -> |-` block.
-    # Values referenced via ${VAR} are resolved from environment variables
-    # injected by the existingSecret (see existingSecret above) plus the
-    # standard JCasC variable interpolation.
+    # JCasC: scripts are loaded from jcasc/*.yaml via configmap-jcasc.yaml.
     # ----------------------------------------------------------------------
     JCasC:
-      defaultConfig: true
-      configScripts:
-        welcome-message: |
-          jenkins:
-            systemMessage: "Jenkins :: Proxmox Platform"
-
-        security: |
-          jenkins:
-            securityRealm:
-              local:
-                allowsSignup: false
-                enableCaptcha: false
-                users:
-                  - id: "${chart-admin-username}"
-                    password: "${chart-admin-password}"
-            authorizationStrategy:
-              globalMatrix:
-                permissions:
-                  - "Overall/Administer:${chart-admin-username}"
-                  - "Overall/Read:anonymous"
-                  - "Job/Read:anonymous"
-                  - "View/Read:anonymous"
-            remotingSecurity:
-              enabled: true
-
-        credentials: |
-          credentials:
-            system:
-              domainCredentials:
-                - credentials:
-                    - usernamePassword:
-                        scope: GLOBAL
-                        id: "git-credentials"
-                        description: "Git credentials sourced from Vault via ExternalSecrets"
-                        username: "${jenkins-git-credentials-git-username}"
-                        password: "${jenkins-git-credentials-git-password}"
-                    - vaultAppRoleCredential:
-                        scope: GLOBAL
-                        id: "vault-approle-placeholder"
-                        description: "Vault AppRole credential placeholder"
-                        path: "approle"
-                        roleId: "${jenkins-vault-approle-vault-role-id}"
-                        secretId: "${jenkins-vault-approle-vault-secret-id}"
-
-        vault-config: |
-          unclassified:
-            hashicorpVault:
-              configuration:
-                vaultUrl: "http://vault.proxmox.local"
-                vaultCredentialId: "vault-approle-placeholder"
-                engineVersion: 2
-
-        seed-job: |
-          jobs:
-            - script: >
-                pipelineJob('seed-job') {
-                  description('Seed job that loads pipeline definitions from the platform Job DSL repository.')
-                  definition {
-                    cps {
-                      sandbox(true)
-                      script("""
-                        pipeline {
-                          agent any
-                          stages {
-                            stage('Checkout DSL') {
-                              steps {
-                                git url: 'https://git.proxmox.local/platform/jenkins-jobs.git', credentialsId: 'git-credentials'
-                              }
-                            }
-                            stage('Apply DSL') {
-                              steps {
-                                jobDsl targets: 'jobs/**/*.groovy', removedJobAction: 'DELETE', removedViewAction: 'DELETE'
-                              }
-                            }
-                          }
-                        }
-                      """.stripIndent())
-                    }
-                  }
-                }
+      defaultConfig: false
+      configScripts: {}
+      # Disable built-in securityRealm and authorizationStrategy snippets —
+      # both are fully managed in jcasc/security.yaml.
+      securityRealm: ""
+      authorizationStrategy: ""
 
     # ----------------------------------------------------------------------
     # initScripts: Groovy executed on controller boot, BEFORE JCasC runs.
-    # Used here for hardening that has no JCasC equivalent.
+    # Scripts are loaded from init-scripts/*.groovy via configmap-init-scripts.yaml.
     # ----------------------------------------------------------------------
-    initScripts:
-      00-hardening: |
-        import jenkins.model.Jenkins
-        import jenkins.security.s2m.AdminWhitelistRule
-        import hudson.diagnosis.OldDataMonitor
-        import hudson.security.csrf.DefaultCrumbIssuer
-
-        def jenkins = Jenkins.instance
-
-        // Disable CLI-over-Remoting (legacy attack surface).
-        jenkins.descriptor("jenkins.CLI").get().setEnabled(false)
-
-        // No quiet period for triggered builds.
-        jenkins.setQuietPeriod(0)
-
-        // Disable the OldData monitor noise.
-        def oldData = jenkins.getAdministrativeMonitor(OldDataMonitor.class.name)
-        if (oldData != null) {
-          oldData.disable(true)
-        }
-
-        // Enforce CSRF protection.
-        if (jenkins.getCrumbIssuer() == null) {
-          jenkins.setCrumbIssuer(new DefaultCrumbIssuer(true))
-        }
-
-        // Lock down agent <-> controller communications.
-        jenkins.injector.getInstance(AdminWhitelistRule.class)
-          .setMasterKillSwitch(false)
-
-        jenkins.save()
+    initScripts: {}
 
   # ----------------------------------------------------------------------
   # Persistence for ${JENKINS_HOME}.
@@ -248,18 +258,14 @@ jenkins:
       default: |
         - name: default
           label: default
-          serviceAccount: default
+          serviceAccount: jenkins-agent
+          volumes:
+            - hostPathVolume:
+                hostPath: "/var/run/docker.sock"
+                mountPath: "/var/run/docker.sock"
           containers:
             - name: jnlp
               image: jenkins/inbound-agent:latest
-              resourceRequestCpu: "200m"
-              resourceRequestMemory: "512Mi"
-              resourceLimitCpu: "1000m"
-              resourceLimitMemory: "1Gi"
-            - name: kaniko
-              image: gcr.io/kaniko-project/executor:latest
-              command: "/busybox/cat"
-              ttyEnabled: true
               resourceRequestCpu: "200m"
               resourceRequestMemory: "512Mi"
               resourceLimitCpu: "1000m"

@@ -1,0 +1,27 @@
+# Configures SMTP email notifications for build results.
+# Both the built-in mailer and the Email Extension plugin are configured
+# so pipelines can use emailext() with full template support.
+# To activate: mv jcasc/disabled/email.yaml jcasc/
+# Requires: smtp-username and smtp-password in Vault at jenkins/smtp-credentials.
+unclassified:
+  mailer:
+    replyToAddress: "jenkins@example.com"
+    smtpHost: "smtp.example.com"
+    smtpPort: "587"
+    useSsl: true
+    authentication:
+      username: "${smtp-username}"
+      password: "${smtp-password}"
+  email-ext:
+    defaultBody: |
+      $PROJECT_NAME - Build # $BUILD_NUMBER - $BUILD_STATUS:
+
+      Check console output at $BUILD_URL to view the results.
+    defaultSubject: "$PROJECT_NAME - Build # $BUILD_NUMBER - $BUILD_STATUS!"
+    defaultReplyTo: "jenkins@example.com"
+    mailAccount:
+      smtpHost: "smtp.example.com"
+      smtpPort: "587"
+      useSsl: true
+      smtpUsername: "${smtp-username}"
+      smtpPassword: "${smtp-password}"

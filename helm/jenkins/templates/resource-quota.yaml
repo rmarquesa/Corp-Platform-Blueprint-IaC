@@ -1,0 +1,31 @@
+# Caps total resource consumption in the jenkins namespace so a runaway
+# build cannot starve other workloads on the cluster.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: jenkins-quota
+  namespace: jenkins
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: "12Gi"
+    limits.cpu: "16"
+    limits.memory: "24Gi"
+    pods: "20"
+---
+# Provides default requests/limits for any container that does not declare
+# them explicitly, preventing quota admission failures from sidecars.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: jenkins-limitrange
+  namespace: jenkins
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "200m"
+        memory: "512Mi"
+      defaultRequest:
+        cpu: "50m"
+        memory: "64Mi"

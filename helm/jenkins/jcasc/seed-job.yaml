@@ -1,0 +1,30 @@
+# Creates the seed job that bootstraps all pipelines via Job DSL.
+# On every run it checks out jenkins-jobs.git and applies all *.groovy
+# definitions under jobs/. Jobs removed from Git are automatically deleted.
+jobs:
+  - script: >
+      pipelineJob('seed-job') {
+        description('Seed job that loads pipeline definitions from the platform Job DSL repository.')
+        definition {
+          cps {
+            sandbox(true)
+            script("""
+              pipeline {
+                agent any
+                stages {
+                  stage('Checkout DSL') {
+                    steps {
+                      git url: 'https://git.proxmox.local/platform/jenkins-jobs.git', credentialsId: 'git-credentials'
+                    }
+                  }
+                  stage('Apply DSL') {
+                    steps {
+                      jobDsl targets: 'jobs/**/*.groovy', removedJobAction: 'DELETE', removedViewAction: 'DELETE'
+                    }
+                  }
+                }
+              }
+            """.stripIndent())
+          }
+        }
+      }

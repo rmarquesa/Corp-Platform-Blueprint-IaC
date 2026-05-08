@@ -1,0 +1,75 @@
+# Restricts traffic in and out of the jenkins namespace.
+# Agents can reach the controller; controller can reach Vault, K8s API and Git.
+# All other traffic is denied by default.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jenkins-controller
+  namespace: jenkins
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: jenkins-controller
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # UI and API from the Traefik ingress controller
+    - ports:
+        - port: 8080
+    # Agent TCP connections from within the jenkins namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: jenkins
+      ports:
+        - port: 50000
+  egress:
+    # Kubernetes API server.
+    # Port 443 matches the ClusterIP (10.43.0.1:443) before k3s DNAT;
+    # port 6443 matches the actual API server port after DNAT rewrites the packet.
+    - ports:
+        - port: 443
+        - port: 6443
+    # Vault
+    - ports:
+        - port: 8200
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jenkins-agents
+  namespace: jenkins
+spec:
+  podSelector:
+    matchLabels:
+      jenkins/jenkins-agent: "true"
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    # Controller TCP tunnel
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: jenkins-controller
+      ports:
+        - port: 50000
+        - port: 8080
+    # External registries, Git, etc.
+    - ports:
+        - port: 443
+        - port: 80
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP

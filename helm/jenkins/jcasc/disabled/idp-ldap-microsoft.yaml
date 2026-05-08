@@ -1,0 +1,52 @@
+# Configures Microsoft Active Directory (LDAP) as the identity provider.
+# Groups jenkins-admins, jenkins-developers and jenkins-readonly must exist
+# in the AD and be assigned to users there.
+# To activate: mv jcasc/disabled/idp-ldap-microsoft.yaml jcasc/
+# and remove jcasc/security.yaml (local realm).
+# Requires: ldap-manager-password in Vault at jenkins/ldap-manager-password.
+jenkins:
+  securityRealm:
+    ldap:
+      configurations:
+        - server: "ldaps://ad.example.com:636"
+          rootDN: "DC=example,DC=com"
+          managerDN: "CN=jenkins-svc,OU=ServiceAccounts,DC=example,DC=com"
+          managerPasswordSecret: "${ldap-manager-password}"
+          userSearchBase: "OU=Users,DC=example,DC=com"
+          userSearch: "sAMAccountName={0}"
+          groupSearchBase: "OU=Groups,DC=example,DC=com"
+          groupSearchFilter: "(& (cn={0}) (objectclass=group))"
+          groupMembershipStrategy:
+            fromGroupSearch:
+              filter: "(&(objectClass=group)(member={0}))"
+      cache:
+        size: 100
+        ttl: 300
+  authorizationStrategy:
+    roleBased:
+      roles:
+        global:
+          - name: "admin"
+            description: "Jenkins administrators"
+            permissions:
+              - "Overall/Administer"
+            entries:
+              - group: "jenkins-admins"
+          - name: "developer"
+            description: "Can build and view jobs"
+            permissions:
+              - "Overall/Read"
+              - "Job/Build"
+              - "Job/Read"
+              - "Job/Workspace"
+              - "View/Read"
+            entries:
+              - group: "jenkins-developers"
+          - name: "readonly"
+            description: "Read-only access"
+            permissions:
+              - "Overall/Read"
+              - "Job/Read"
+              - "View/Read"
+            entries:
+              - group: "jenkins-readonly"

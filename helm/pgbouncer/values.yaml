@@ -50,6 +50,17 @@ userList:
   existingSecret: pgbouncer-userlist
   createPlaceholder: false
 
+# External Secrets Operator integration. When enabled, an ExternalSecret syncs
+# the userlist.txt entry from the configured ClusterSecretStore (Vault) into
+# the Kubernetes Secret named by userList.existingSecret.
+externalSecrets:
+  enabled: true
+  clusterSecretStore: vault
+  refreshInterval: 1h
+  userList:
+    remoteKey: pgbouncer/userlist
+    property: userlist.txt
+
 service:
   type: ClusterIP
   port: 5432

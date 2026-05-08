@@ -33,6 +33,7 @@ def main() -> None:
         "deployment.yaml",
         "service.yaml",
         "secret.yaml",
+        "external-secret-userlist.yaml",
         "poddisruptionbudget.yaml",
     ]
     for name in required_templates:
@@ -45,6 +46,8 @@ def main() -> None:
         "postgres.proxmox.local",
         "auth_query:",
         "userList:",
+        "externalSecrets:",
+        "platform/pgbouncer/userlist",
         "nodeSelector:",
         "tolerations:",
     ]:
@@ -62,6 +65,19 @@ def main() -> None:
             fail(f"deployment template missing {expected!r}")
     if re.search(r"\n\s+args:\n\s+-\s+/etc/pgbouncer/pgbouncer\.ini", deployment):
         fail("deployment must not append pgbouncer.ini as args when Dockerfile ENTRYPOINT already includes it")
+
+    external_secret = read(CHART / "templates" / "external-secret-userlist.yaml")
+    for expected in [
+        "kind: ExternalSecret",
+        "name: {{ .Values.userList.existingSecret | quote }}",
+        "kind: ClusterSecretStore",
+        "name: {{ .Values.externalSecrets.clusterSecretStore | quote }}",
+        "secretKey: userlist.txt",
+        "key: {{ .Values.externalSecrets.userList.remoteKey | quote }}",
+        "property: {{ .Values.externalSecrets.userList.property | quote }}",
+    ]:
+        if expected not in external_secret:
+            fail(f"external-secret-userlist template missing {expected!r}")
 
     dockerfile = read(DOCKERFILE)
     if not re.search(r"^FROM\s+alpine:", dockerfile, flags=re.MULTILINE):

@@ -1,0 +1,11 @@
+# General Jenkins controller settings. slaveAgentPort enables the TCP listener
+# on port 50000 so Kubernetes agents can connect back to the controller.
+jenkins:
+  disableRememberMe: false
+  mode: NORMAL
+  numExecutors: 0
+  labelString: ""
+  projectNamingStrategy: "standard"
+  markupFormatter:
+    plainText
+  slaveAgentPort: 50000

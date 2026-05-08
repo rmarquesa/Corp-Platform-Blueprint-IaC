@@ -1,0 +1,45 @@
+# Configures Keycloak as the OpenID Connect identity provider.
+# Groups jenkins-admins, jenkins-developers and jenkins-readonly must exist
+# in the Keycloak realm and be assigned to users there.
+# To activate: mv jcasc/disabled/idp-keycloak.yaml jcasc/
+# and remove jcasc/security.yaml (local realm).
+# Requires: keycloak-client-secret in Vault at jenkins/keycloak-client-secret.
+jenkins:
+  securityRealm:
+    oic:
+      clientId: "jenkins"
+      clientSecret: "${keycloak-client-secret}"
+      wellKnownOpenIDConfigurationUrl: "https://keycloak.example.com/auth/realms/jenkins/.well-known/openid-configuration"
+      userNameField: "preferred_username"
+      fullNameFieldName: "name"
+      emailFieldName: "email"
+      groupsFieldName: "groups"
+      scopes: "openid profile email groups"
+  authorizationStrategy:
+    roleBased:
+      roles:
+        global:
+          - name: "admin"
+            description: "Jenkins administrators"
+            permissions:
+              - "Overall/Administer"
+            entries:
+              - group: "jenkins-admins"
+          - name: "developer"
+            description: "Can build and view jobs"
+            permissions:
+              - "Overall/Read"
+              - "Job/Build"
+              - "Job/Read"
+              - "Job/Workspace"
+              - "View/Read"
+            entries:
+              - group: "jenkins-developers"
+          - name: "readonly"
+            description: "Read-only access"
+            permissions:
+              - "Overall/Read"
+              - "Job/Read"
+              - "View/Read"
+            entries:
+              - group: "jenkins-readonly"

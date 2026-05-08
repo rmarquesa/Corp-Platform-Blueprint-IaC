@@ -1,0 +1,9 @@
+# Configures the HashiCorp Vault plugin to connect to the internal Vault
+# instance using the AppRole credential defined in credentials.yaml.
+# KV engine version 2 is required for the kv/ mount used in this platform.
+unclassified:
+  hashicorpVault:
+    configuration:
+      vaultUrl: "http://vault.proxmox.local"
+      vaultCredentialId: "vault-approle-placeholder"
+      engineVersion: 2

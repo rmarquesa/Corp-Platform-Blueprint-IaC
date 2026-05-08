@@ -1,0 +1,25 @@
+# Configures the local security realm with a single admin user sourced from
+# Vault via ExternalSecrets. Anonymous users get read-only access to jobs and
+# views. Replace with idp-keycloak.yaml or idp-ldap-microsoft.yaml when an
+# identity provider is available.
+jenkins:
+  securityRealm:
+    local:
+      allowsSignup: false
+      enableCaptcha: false
+      users:
+        - id: "${chart-admin-username}"
+          password: "${chart-admin-password}"
+  authorizationStrategy:
+    globalMatrix:
+      entries:
+        - user:
+            name: "${chart-admin-username}"
+            permissions:
+              - "Overall/Administer"
+        - user:
+            name: "anonymous"
+            permissions:
+              - "Overall/Read"
+              - "Job/Read"
+              - "View/Read"

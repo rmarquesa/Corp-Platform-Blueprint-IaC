@@ -1,0 +1,13 @@
+{{- range $path, $content := .Files.Glob "jcasc/*.yaml" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "jenkins-jcasc-%s" (base $path | trimSuffix ".yaml") }}
+  labels:
+    app.kubernetes.io/name: jenkins
+    jenkins-jenkins-config: "true"
+data:
+  {{ base $path }}: |
+    {{- $content | toString | nindent 4 }}
+{{- end }}

@@ -19,4 +19,4 @@
       REVOKE ALL ON FUNCTION pgbouncer.get_auth(TEXT) FROM PUBLIC;
       GRANT EXECUTE ON FUNCTION pgbouncer.get_auth(TEXT) TO pgbouncer;
   run_once: true
-  delegate_to: "{{ groups['postgres'] | first }}"
+  delegate_to: "{{ groups['patroni'] | first }}"

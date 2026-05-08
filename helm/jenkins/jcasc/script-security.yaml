@@ -1,0 +1,6 @@
+# Enforces Groovy sandbox for all pipelines and Job DSL scripts.
+# Scripts requiring approved signatures must be explicitly approved by an admin
+# in Manage Jenkins → In-process Script Approval.
+security:
+  globalJobDslSecurityConfiguration:
+    useScriptSecurity: true

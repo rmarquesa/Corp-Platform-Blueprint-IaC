@@ -1,0 +1,3 @@
+# Sets the system message displayed on the Jenkins dashboard home page.
+jenkins:
+  systemMessage: "Jenkins :: Proxmox Platform"
