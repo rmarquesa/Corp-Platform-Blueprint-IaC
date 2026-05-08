@@ -143,7 +143,6 @@ jenkins:
     #   java -jar jenkins-plugin-manager.jar --war jenkins.war \
     #     --plugin-file <(helm template . | grep '^\s*-' | ...) --output yaml
     installPlugins:
-      # gitleaks:disable
       # --- Configuration & Security ---
       - antisamy-markup-formatter:173.v680e3a_b_69ff3
       - configuration-as-code:2077.v41f1011a_5110
@@ -183,7 +182,6 @@ jenkins:
       - favorite:2.263.v941d21defef7
       - matrix-project:870.v9db_fcfc2f45b_
 
-      # gitleaks:enable
 
     # installLatestPlugins: false  → respects the :version pins in installPlugins.
     #   The plugin manager compares checksums against what is already on the PVC;
