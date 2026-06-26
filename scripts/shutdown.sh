@@ -2,6 +2,37 @@
 # Run directly on the Proxmox host: bash /usr/local/sbin/shutdown-guests.sh
 set -euo pipefail
 
+POWEROFF_HOST=true
+
+usage() {
+  cat <<'EOF'
+Usage: shutdown.sh [--guests-only|--no-poweroff]
+
+Gracefully stop platform guests in dependency order.
+
+Default behaviour powers off the Proxmox host after guests stop.
+Use --guests-only/--no-poweroff before a Terraform rebuild test.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --guests-only|--no-poweroff)
+      POWEROFF_HOST=false
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "ERROR: unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
 TIMEOUT=120  # seconds to wait per guest before forcing off
 
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
@@ -71,9 +102,10 @@ shutdown_vm 203 k8s-master-3
 shutdown_vm 202 k8s-master-2
 shutdown_vm 201 k8s-master-1
 
-# 4. Harbor registry
-log "--- Step 4: Harbor registry ---"
+# 4. Developer platform services
+log "--- Step 4: Developer platform services ---"
 shutdown_vm 220 harbor
+shutdown_vm 222 gitlab
 
 # 5. PostgreSQL — replicas before primary
 log "--- Step 5: PostgreSQL ---"
@@ -87,6 +119,10 @@ shutdown_lxc 221 vault
 shutdown_lxc 230 tailscale
 shutdown_lxc 200 coredns   # DNS last — needed for resolution during shutdown
 
-log "=== All guests stopped. Powering off host... ==="
-sleep 2
-poweroff
+if [[ "$POWEROFF_HOST" == true ]]; then
+  log "=== All guests stopped. Powering off host... ==="
+  sleep 2
+  poweroff
+else
+  log "=== All guests stopped. Host left powered on (--guests-only). ==="
+fi

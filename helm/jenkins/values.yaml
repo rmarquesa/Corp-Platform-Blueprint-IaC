@@ -22,6 +22,7 @@ externalSecrets:
     admin: jenkins/admin
     git: jenkins/git
     vaultApprole: jenkins/vault-approle
+    harbor: jenkins/harbor
   # Refresh interval for ESO reconciliation.
   refreshInterval: 1h
 
@@ -126,6 +127,10 @@ jenkins:
         keyName: vault-role-id
       - name: jenkins-vault-approle
         keyName: vault-secret-id
+      - name: jenkins-harbor-credentials
+        keyName: username
+      - name: jenkins-harbor-credentials
+        keyName: password
 
     # Ingress (Traefik). TLS disabled for internal cluster access.
     ingress:

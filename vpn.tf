@@ -4,6 +4,7 @@ resource "proxmox_download_file" "debian12_lxc" {
   node_name    = var.proxmox_node
   url          = "http://download.proxmox.com/images/system/debian-12-standard_12.12-1_amd64.tar.zst"
   file_name    = "debian-12-standard_12.12-1_amd64.tar.zst"
+  overwrite    = false
 
   lifecycle {
     prevent_destroy = true

@@ -90,3 +90,8 @@ dns_hosts:
   - ip: 10.10.0.31
     names:
       - vault.proxmox.local
+
+  # GitLab
+  - ip: 10.10.0.32
+    names:
+      - gitlab.proxmox.local

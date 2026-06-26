@@ -11,8 +11,18 @@ need() { command -v "$1" >/dev/null 2>&1; }
 log "Terraform fmt check"
 terraform fmt -check -recursive
 
-log "Terraform validate"
-terraform validate
+terraform_roots=(".")
+if [[ -d terraform-gitlab ]]; then
+  terraform_roots+=("terraform-gitlab")
+fi
+
+for tf_root in "${terraform_roots[@]}"; do
+  log "Terraform validate (${tf_root})"
+  if [[ ! -d "${tf_root}/.terraform" ]]; then
+    terraform -chdir="${tf_root}" init -backend=false -input=false >/dev/null
+  fi
+  terraform -chdir="${tf_root}" validate
+done
 
 log "Helm lint charts"
 while IFS= read -r chart; do
@@ -23,9 +33,19 @@ done < <(find helm -path '*/charts' -prune -o -name Chart.yaml -print | sed 's#/
 log "Ansible syntax checks"
 while IFS= read -r playbook; do
   dir="$(dirname "$playbook")"
-  inv="$dir/inventory/hosts.yml"
+  inv=""
+  for candidate in \
+    "$dir/inventory/hosts.yml" \
+    "$dir/inventory/hosts.yaml" \
+    "$dir/inventory/inventory.yml" \
+    "$dir/inventory/inventory.yaml"; do
+    if [[ -f "$candidate" ]]; then
+      inv="$candidate"
+      break
+    fi
+  done
   printf '\n-- %s --\n' "$playbook"
-  if [[ -f "$inv" ]]; then
+  if [[ -n "$inv" ]]; then
     ansible-playbook --syntax-check "$playbook" -i "$inv"
   else
     ansible-playbook --syntax-check "$playbook"
@@ -43,7 +63,7 @@ except Exception as exc:
     print(f"WARN: PyYAML unavailable, skipping YAML parse check: {exc}")
     sys.exit(0)
 
-skip_dirs = {'.git', '.terraform', 'charts'}
+skip_dirs = {'.git', '.terraform', '.gpc', 'charts'}
 errors = []
 count = 0
 for root, dirs, files in os.walk('.'):

@@ -18,3 +18,11 @@ path "kv/data/jenkins/*" {
 path "kv/metadata/jenkins/*" {
   capabilities = ["read", "list"]
 }
+
+path "kv/data/pgbouncer/*" {
+  capabilities = ["read"]
+}
+
+path "kv/metadata/pgbouncer/*" {
+  capabilities = ["read", "list"]
+}

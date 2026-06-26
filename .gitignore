@@ -2,12 +2,17 @@ secrets.sh
 helm/**/charts/
 .DS_Store
 .claude
+.hermes/
 .terraform/
+.gpc/
 terraform.tfstate
 terraform.tfstate.backup
 terraform.tfvars
 *.tfvars
 !*.tfvars.example
+tfplan*
+*.tfplan
+terraform-state-before-rebuild.txt
 __pycache__/
 *.py[cod]
 crash.log

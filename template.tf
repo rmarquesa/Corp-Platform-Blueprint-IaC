@@ -36,6 +36,7 @@ resource "proxmox_download_file" "ubuntu_2404" {
   node_name    = var.proxmox_node
   url          = "https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-amd64.img"
   file_name    = "ubuntu-24.04-server-cloudimg-amd64.img"
+  overwrite    = false
 
   lifecycle {
     prevent_destroy = true

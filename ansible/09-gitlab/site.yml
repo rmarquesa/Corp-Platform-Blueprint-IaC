@@ -1,0 +1,8 @@
+---
+- name: Install GitLab CE via Docker Compose
+  hosts: all
+  become: true
+  roles:
+    - prereqs
+    - docker
+    - gitlab

@@ -1,4 +1,5 @@
-FROM alpine:3.22
+ARG ALPINE_VERSION=3.22
+FROM alpine:${ALPINE_VERSION}
 
 RUN addgroup -S pgbouncer 2>/dev/null || true \
     && adduser -S -D -H -G pgbouncer pgbouncer 2>/dev/null || true \

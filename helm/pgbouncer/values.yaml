@@ -1,7 +1,7 @@
 replicaCount: 2
 
 image:
-  repository: ghcr.io/rmarquesa/pgbouncer
+  repository: harbor.proxmox.local/platform/pgbouncer
   tag: "1.24.0-alpine3.22"
   pullPolicy: IfNotPresent
 

@@ -1,0 +1,16 @@
+ansible_user: ubuntu
+
+# GitLab CE image — pin to a specific version; bump here to upgrade.
+# Check https://hub.docker.com/r/gitlab/gitlab-ce/tags for the latest.
+gitlab_image: "gitlab/gitlab-ce:17.11.1-ce.0"
+
+gitlab_hostname: gitlab.proxmox.local
+gitlab_external_url: "http://gitlab.proxmox.local"
+gitlab_health_url: "http://127.0.0.1/-/health"
+gitlab_ssh_port: 2222
+gitlab_home: /srv/gitlab
+
+# Root password injected at first-run via GITLAB_OMNIBUS_CONFIG.
+# Export before running the playbook:
+#   export VAULT_GITLAB_ROOT_PASSWORD=$(vault kv get -field=root_password kv/gitlab/admin)
+vault_gitlab_root_password: "{{ lookup('env', 'VAULT_GITLAB_ROOT_PASSWORD') | mandatory }}"

@@ -1,0 +1,43 @@
+# Docker image build jobs for platform services.
+# Each job checks out this repository and runs the Jenkinsfile
+# co-located with the Dockerfile under docker/<service>/.
+#
+# Prerequisites:
+#   - git-credentials must be configured (see credentials.yaml)
+#   - harbor-credentials must be configured (see credentials.yaml)
+#   - docker-builder pod template must exist (see kubernetes-cloud.yaml)
+#   - Set PROXMOX_REPO_URL below to the actual Git URL of this repository.
+jobs:
+  - script: >
+      def REPO_URL = 'http://gitlab.proxmox.local/platform/proxmox.git'
+
+      folder('docker') {
+        description('Docker image build jobs for platform services.')
+      }
+
+      pipelineJob('docker/pgbouncer-build') {
+        description('Builds the custom PgBouncer Alpine image and pushes it to Harbor.')
+        parameters {
+          stringParam('ALPINE_VERSION', '3.22', 'Alpine Linux version used as base image')
+          stringParam('IMAGE_TAG', '1.24.0-alpine3.22', 'Full image tag — convention: <pgbouncer-ver>-alpine<alpine-ver>')
+        }
+        logRotator {
+          numToKeep(10)
+          daysToKeep(30)
+        }
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url(REPO_URL)
+                  credentials('git-credentials')
+                }
+                branch('*/main')
+              }
+            }
+            scriptPath('docker/pgbouncer/Jenkinsfile')
+            lightweight(true)
+          }
+        }
+      }

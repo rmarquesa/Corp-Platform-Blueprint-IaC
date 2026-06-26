@@ -1,0 +1,31 @@
+services:
+  gitlab:
+    image: {{ gitlab_image }}
+    container_name: gitlab
+    restart: always
+    hostname: "{{ gitlab_hostname }}"
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url '{{ gitlab_external_url }}'
+        gitlab_rails['gitlab_shell_ssh_port'] = {{ gitlab_ssh_port }}
+        gitlab_rails['initial_root_password'] = '{{ vault_gitlab_root_password }}'
+        gitlab_rails['display_initial_root_password'] = false
+        # Harbor is the dedicated enterprise image registry for this platform.
+        # GitLab remains the Git/project API layer, not the runtime registry.
+        gitlab_rails['registry_enabled'] = false
+        registry['enable'] = false
+        # Reduce memory footprint for homelab use
+        puma['worker_processes'] = 2
+        puma['min_threads'] = 1
+        puma['max_threads'] = 4
+        sidekiq['concurrency'] = 10
+        postgresql['shared_buffers'] = "256MB"
+        prometheus_monitoring['enable'] = false
+    ports:
+      - "80:80"
+      - "{{ gitlab_ssh_port }}:22"
+    volumes:
+      - "{{ gitlab_home }}/config:/etc/gitlab"
+      - "{{ gitlab_home }}/logs:/var/log/gitlab"
+      - "{{ gitlab_home }}/data:/var/opt/gitlab"
+    shm_size: "256m"

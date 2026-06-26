@@ -1,0 +1,25 @@
+# Copy to terraform.tfvars and fill only non-secret overrides.
+# terraform.tfvars is ignored by the repository.
+
+# Prefer sourcing the token from Vault instead of writing it here:
+#   export TF_VAR_gitlab_token="$(vault kv get -field=token kv/gitlab/terraform)"
+# gitlab_token = "<do-not-commit>"
+
+gitlab_base_url = "http://gitlab.proxmox.local/api/v4/"
+
+# Branch protection should be enabled only after the default branches exist.
+enable_branch_protection = false
+
+# Enable after Jenkins is reachable and webhook/auth strategy is chosen.
+enable_jenkins_webhooks = false
+jenkins_base_url        = "http://jenkins.proxmox.local"
+
+# protected_ci_variables = {
+#   harbor_registry = {
+#     project_key = "proxmox"
+#     key         = "HARBOR_REGISTRY"
+#     value       = "harbor.proxmox.local"
+#     masked      = false
+#     protected   = true
+#   }
+# }

@@ -1,6 +1,6 @@
 # platform-blueprint
 
-Production-grade corporate infrastructure blueprint for a single Proxmox node. The platform is provisioned with **Terraform**, configured with **Ansible**, and operated through **ArgoCD GitOps** after a small manual bootstrap layer.
+Production-grade corporate infrastructure blueprint for a single Proxmox node. The platform is provisioned with **Terraform**, configured with **Ansible**, operated through **ArgoCD GitOps**, and extended with **GitLab**, **Jenkins**, and **Harbor** to demonstrate enterprise source-control, CI/CD, and artifact-management patterns.
 
 > Goal: not a toy environment. The design models real platform decisions: HA control plane, HA database, distributed storage, private access, centralized identity, observability, and no direct public port forwarding.
 
@@ -31,7 +31,8 @@ Production-grade corporate infrastructure blueprint for a single Proxmox node. T
            │                                           │
            │  Infra Workers ×3  workload=infra:NoSched │
            │                    Longhorn, ArgoCD,       │
-           │                    monitoring, ingress     │
+           │                    monitoring, ingress,    │
+           │                    Jenkins agents          │
            │                                           │
            │  App Workers ×2    workload=app            │
            │                    User workloads          │
@@ -42,10 +43,17 @@ Production-grade corporate infrastructure blueprint for a single Proxmox node. T
            │                                           │
            │  CoreDNS       internal DNS               │
            │  PostgreSQL HA Patroni + etcd             │
-           │  Harbor        container registry          │
+           │  GitLab        source control / API        │
+           │  Jenkins       CI/CD control plane         │
+           │  Harbor        dedicated image registry    │
            │  Vault         secrets management          │
            │  Tailscale     subnet router only          │
            └───────────────────────────────────────────┘
+
+      Source -> CI/CD -> Artifact -> GitOps runtime path:
+
+      GitLab repositories -> Jenkins pipelines -> Harbor images
+                -> Helm values / GitOps commits -> ArgoCD -> k3s
 ```
 
 ---
@@ -58,6 +66,7 @@ Production-grade corporate infrastructure blueprint for a single Proxmox node. T
 - **Zero open router ports** — public access uses Cloudflare Tunnel; private access uses a dedicated Tailscale LXC advertising `10.10.0.0/24`.
 - **No Tailscale in Kubernetes** — Tailscale is intentionally **not** installed through ArgoCD and there is no Tailscale Kubernetes Operator in this design.
 - **Identity-first** — Keycloak provides OIDC/SSO for internal services.
+- **Enterprise separation of concerns** — GitLab owns source control/project metadata, Jenkins owns CI/CD orchestration, Harbor owns runtime artifacts, and ArgoCD owns Kubernetes desired state.
 
 ---
 
@@ -70,6 +79,7 @@ Production-grade corporate infrastructure blueprint for a single Proxmox node. T
 | Proxmox VE 8.x | Hypervisor for VMs/LXCs |
 | Terraform + bpg/proxmox | VM/LXC/SDN lifecycle |
 | Ansible | OS-level configuration and service bootstrap |
+| Terraform + gitlabhq/gitlab | GitLab groups/projects/policies after GitLab exists |
 | Helm | Kubernetes package rendering/install |
 | ArgoCD | GitOps reconciliation after bootstrap |
 
@@ -82,6 +92,14 @@ Production-grade corporate infrastructure blueprint for a single Proxmox node. T
 | Traefik | 39.0.9 | Ingress controller / Gateway API v1 |
 | Longhorn | 1.7.2 | Distributed block storage |
 | ArgoCD | 9.5.11 | GitOps continuous delivery |
+
+### Developer Platform & CI/CD
+
+| Component | Version | Purpose |
+|---|---:|---|
+| GitLab CE | 17.11.1-ce.0 | Internal Git server, project API and repository source of truth |
+| Jenkins | 2.555.1 | Enterprise CI/CD via JCasC, Job DSL and Kubernetes agents |
+| Harbor | 2.12.2 | Dedicated container registry, robot accounts and image scanning |
 
 ### Observability
 
@@ -99,7 +117,7 @@ Production-grade corporate infrastructure blueprint for a single Proxmox node. T
 | PostgreSQL | 17 | HA database via Patroni + etcd |
 | PgBouncer | 1.1.0 chart | Connection pooling |
 | Redis HA | 21.2.7 chart | Cache with Sentinel |
-| Harbor | — | Private container registry |
+| Harbor | 2.12.2 | Dedicated private container registry |
 | Vault | — | Secrets management |
 | CoreDNS | 1.12.1 | Internal DNS for `proxmox.local` |
 | cloudflared | 2025.4.0 | Cloudflare Tunnel |
@@ -124,7 +142,8 @@ Production-grade corporate infrastructure blueprint for a single Proxmox node. T
 | db-1 | 210 | 10.10.0.20 | 2 vCPU / 4 GB | PostgreSQL / Patroni |
 | db-2 | 211 | 10.10.0.22 | 2 vCPU / 4 GB | PostgreSQL / Patroni |
 | db-3 | 213 | 10.10.0.24 | 2 vCPU / 4 GB | PostgreSQL / Patroni no-failover/no-sync |
-| harbor | 220 | 10.10.0.30 | 4 vCPU / 8 GB | container registry |
+| harbor | 220 | 10.10.0.30 | 4 vCPU / 8 GB | dedicated container registry |
+| gitlab | 222 | 10.10.0.32 | 4 vCPU / 8 GB | GitLab CE source control |
 
 ### LXC Containers
 
@@ -148,7 +167,8 @@ Production-grade corporate infrastructure blueprint for a single Proxmox node. T
 
 ```text
 .
-├── *.tf                         # Terraform root modules for Proxmox resources
+├── *.tf                         # Terraform root stack for Proxmox resources
+├── terraform-gitlab/            # Terraform stack for GitLab groups/projects/policies
 ├── modules/
 │   ├── vm/                      # VM module
 │   └── lxc/                     # LXC module
@@ -158,11 +178,16 @@ Production-grade corporate infrastructure blueprint for a single Proxmox node. T
 │   ├── 03-postgres/             # PostgreSQL 17 + Patroni + etcd + vip-manager
 │   ├── 04-harbor/               # Docker + Harbor installer
 │   ├── 05-dns/                  # CoreDNS internal DNS
-│   ├── tailscale/               # Tailscale LXC subnet router
-│   └── vault/                   # Vault + Raft storage
+│   ├── 06-tailscale/            # Tailscale LXC subnet router
+│   ├── 07-vault/                # Vault + Raft storage
+│   ├── 08-vault-k3s/            # Vault Kubernetes auth and platform policies
+│   └── 09-gitlab/               # GitLab CE via Docker Compose
 ├── helm/                        # Local wrapper charts and values
 ├── argocd/apps/                 # App-of-Apps manifests with sync waves
+├── docker/                      # Platform image build contexts and Jenkinsfiles
 ├── docs/
+│   ├── platform-operating-model.md
+│   ├── runbooks/bootstrap.md
 │   └── tailscale-acl.hujson     # Tailscale ACL for LXC-only subnet router
 └── scripts/
     ├── shutdown.sh              # Graceful Proxmox guest shutdown order
@@ -244,11 +269,20 @@ ansible-playbook 04-harbor/playbook.yml -i 04-harbor/inventory/hosts.yml
 ### 8. Configure Vault
 
 ```bash
-ansible-playbook vault/playbook.yml -i vault/inventory/hosts.yml
+ansible-playbook 07-vault/site.yml -i 07-vault/inventory/hosts.yml
 # Retrieve /root/vault-init.json from the Vault LXC and store unseal keys securely.
 ```
 
-### 9. Configure Tailscale LXC subnet router
+### 9. Configure GitLab
+
+GitLab is the internal source-control and project API layer. Harbor remains the dedicated image registry.
+
+```bash
+export VAULT_GITLAB_ROOT_PASSWORD="$(vault kv get -field=root_password kv/gitlab/admin)"
+ansible-playbook 09-gitlab/site.yml -i 09-gitlab/inventory/inventory.yml
+```
+
+### 10. Configure Tailscale LXC subnet router
 
 Tailscale is deployed only in the LXC at `10.10.0.40`. Do not add a Tailscale Operator or ArgoCD app unless the architecture intentionally changes.
 
@@ -258,12 +292,12 @@ Tailscale is deployed only in the LXC at `10.10.0.40`. Do not add a Tailscale Op
 4. Run:
 
 ```bash
-ansible-playbook tailscale/site.yml -i tailscale/inventory/hosts.yml
+ansible-playbook 06-tailscale/site.yml -i 06-tailscale/inventory/hosts.yml
 ```
 
 The ACL auto-approves route `10.10.0.0/24` for `tag:subnet-router`; otherwise approve the subnet route manually in the Tailscale admin console.
 
-### 10. Platform bootstrap: manual recovery layer
+### 11. Platform bootstrap: manual recovery layer
 
 Traefik, Longhorn, and ArgoCD are installed manually. They are the recovery layer: if ArgoCD breaks, Traefik/ArgoCD access remains independently recoverable.
 
@@ -299,7 +333,7 @@ helm upgrade --install argocd helm/argocd/ \
   --wait --timeout 5m
 ```
 
-### 11. GitOps takes over
+### 12. GitOps takes over
 
 ```bash
 kubectl apply -f argocd/apps/root.yaml
@@ -315,6 +349,20 @@ ArgoCD syncs the remaining stack:
 
 Longhorn is installed in the manual bootstrap step and is not currently part of `argocd/apps`.
 
+### 13. Configure GitLab objects
+
+After GitLab is reachable and a bootstrap token is available, use the dedicated Terraform GitLab stack:
+
+```bash
+export TF_VAR_gitlab_token="$(vault kv get -field=token kv/gitlab/terraform)"
+cd terraform-gitlab
+terraform init
+terraform plan -out=tfplan
+terraform apply tfplan
+```
+
+This creates and maintains GitLab groups, projects, branch protection, CI/CD variables and Jenkins webhooks as code.
+
 ---
 
 ## Validation
@@ -325,7 +373,15 @@ Run the local validation suite before committing or applying changes:
 scripts/validate.sh
 ```
 
-It checks Terraform formatting/validation, Helm chart linting, Ansible syntax, YAML parsing for non-template files, and optional secret scanning with gitleaks when available.
+It checks Terraform formatting/validation for the Proxmox and GitLab stacks, Helm chart linting, Ansible syntax, YAML parsing for non-template files, and optional secret scanning with gitleaks when available.
+
+For live bootstrap testing against the Proxmox host, use the safe preflight wrapper:
+
+```bash
+scripts/bootstrap-preflight.sh --plan --plan-file tfplan.bootstrap-test
+```
+
+The detailed rebuild procedure is documented in `docs/runbooks/bootstrap-test-plan.md`.
 
 ---
 
@@ -362,3 +418,5 @@ Until that flow is complete, bootstrap-only secrets may be created manually or s
 - **Add an application** — create `helm/<app>/`, add an `argocd/apps/<app>.yaml`, validate, then push.
 - **Scale workers** — edit `k8s-workers-app.tf` or `k8s-workers-infra.tf`, run `terraform apply`, then re-run the k3s playbook.
 - **Tailscale changes** — update only the LXC Ansible role and `docs/tailscale-acl.hujson`; do not add Tailscale to ArgoCD in the current architecture.
+- **GitLab project changes** — update `terraform-gitlab/`, run `terraform plan`, and apply only after GitLab is reachable and the reviewed plan is accepted.
+- **CI/CD changes** — update Jenkins JCasC/Job DSL in `helm/jenkins/`, validate with `tests/validate_jenkins_chart.py`, and let Helm/ArgoCD reconcile.

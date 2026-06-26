@@ -1,0 +1,9 @@
+project: "proxmox"
+repo: "platform-blueprint"
+name: "platform-blueprint"
+gpc_root: "/Users/rmarquesa/Documents/GPC"
+auto_index: true
+hooks:
+  - post-commit
+  - post-merge
+  - post-checkout

@@ -47,7 +47,7 @@ def main() -> None:
         "auth_query:",
         "userList:",
         "externalSecrets:",
-        "platform/pgbouncer/userlist",
+        "pgbouncer/userlist",
         "nodeSelector:",
         "tolerations:",
     ]:

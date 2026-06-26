@@ -1,0 +1,74 @@
+pipeline {
+  agent {
+    kubernetes {
+      inheritFrom 'docker-builder'
+    }
+  }
+
+  parameters {
+    string(
+      name: 'ALPINE_VERSION',
+      defaultValue: '3.22',
+      description: 'Alpine Linux base version (matches the apk package repository)'
+    )
+    string(
+      name: 'IMAGE_TAG',
+      defaultValue: '1.24.0-alpine3.22',
+      description: 'Full image tag to push — convention: <pgbouncer-version>-alpine<alpine-version>'
+    )
+  }
+
+  environment {
+    HARBOR_REGISTRY = 'harbor.proxmox.local'
+    HARBOR_PROJECT  = 'platform'
+    IMAGE_NAME      = 'pgbouncer'
+    FULL_IMAGE      = "${env.HARBOR_REGISTRY}/${env.HARBOR_PROJECT}/${env.IMAGE_NAME}:${params.IMAGE_TAG}"
+  }
+
+  stages {
+    stage('Build') {
+      steps {
+        container('docker') {
+          sh """
+            docker build \
+              --build-arg ALPINE_VERSION=${params.ALPINE_VERSION} \
+              --pull \
+              --no-cache \
+              -t ${env.FULL_IMAGE} \
+              docker/pgbouncer/
+          """
+        }
+      }
+    }
+
+    stage('Push') {
+      steps {
+        container('docker') {
+          withCredentials([usernamePassword(
+            credentialsId: 'harbor-credentials',
+            usernameVariable: 'HARBOR_USER',
+            passwordVariable: 'HARBOR_PASS'
+          )]) {
+            sh """
+              echo "\${HARBOR_PASS}" | docker login ${env.HARBOR_REGISTRY} \
+                -u "\${HARBOR_USER}" --password-stdin
+              docker push ${env.FULL_IMAGE}
+              docker logout ${env.HARBOR_REGISTRY}
+            """
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      container('docker') {
+        sh "docker rmi ${env.FULL_IMAGE} || true"
+      }
+    }
+    success {
+      echo "Image pushed: ${env.FULL_IMAGE}"
+    }
+  }
+}
